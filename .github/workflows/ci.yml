@@ -1,0 +1,45 @@
+name: CI
+
+# Gate every push/PR on the same checks the loop runs locally: typecheck, tests, and a real production
+# build. Lint is added once ESLint is configured (see docs/loop-progress.md production checklist).
+#
+# [HUMAN] required before this is effective: (1) git init + push this repo to GitHub, (2) add repo
+# Secrets NEXT_PUBLIC_SUPABASE_URL + NEXT_PUBLIC_SUPABASE_ANON_KEY (the build fail-fasts without them in
+# production), (3) enable branch protection requiring this workflow to pass.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Enable corepack (pnpm)
+        run: corepack enable
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Unit tests
+        run: pnpm test
+
+      - name: Production build
+        run: pnpm build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+
+      # - name: Lint  # enable once ESLint is installed/configured
+      #   run: pnpm lint

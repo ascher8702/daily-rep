@@ -1,0 +1,25 @@
+# Supabase config — version-controls the per-function JWT gating so the auth posture is reviewable and
+# enforced on `supabase functions deploy`, not just asserted in code comments.
+#
+# NOTE: this project's full schema is managed centrally in the shared Supabase project
+# (ref aswwhsxubqyzbrfoptoq); only the Daily Rep billing migrations are mirrored under supabase/migrations.
+
+project_id = "aswwhsxubqyzbrfoptoq"
+
+# Stripe webhook is public — Stripe can't send a Supabase JWT; it authenticates via signature
+# verification against STRIPE_WEBHOOK_SECRET inside the function.
+[functions.stripe-webhook]
+verify_jwt = false
+
+# These are gated to signed-in callers; each re-derives the uid from the JWT (no IDOR).
+[functions.create-checkout-session]
+verify_jwt = true
+
+[functions.create-portal-session]
+verify_jwt = true
+
+[functions.set-auto-renew]
+verify_jwt = true
+
+[functions.delete-account]
+verify_jwt = true
