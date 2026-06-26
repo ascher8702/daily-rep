@@ -21,7 +21,7 @@ function Check({ size = 16, color = '#1a0a04', width = 2.6 }: { size?: number; c
 }
 
 /** The 3-step "how your free trial works" timeline (Today → Day 28 → Day 30). */
-function TrialTimeline() {
+function TrialTimeline({ plan }: { plan: PlanId }) {
   const dot = 'relative z-[1] flex flex-col items-center text-center'
   return (
     <div>
@@ -42,7 +42,7 @@ function TrialTimeline() {
           <div className={dot}>
             <span className="grid place-items-center h-[34px] w-[34px] rounded-full bg-raised border border-hairline/10 text-fg/60"><CardIcon size={16} strokeWidth={1.9} /></span>
             <div className="text-[10px] font-extrabold tracking-[0.08em] uppercase text-fg/50 mt-2.5">Day 30</div>
-            <div className="text-[10.5px] font-semibold text-fg/50 mt-1 leading-tight">Plan begins,<br />billed yearly.</div>
+            <div className="text-[10.5px] font-semibold text-fg/50 mt-1 leading-tight">Plan begins,<br />billed {plan === 'annual' ? 'yearly' : 'monthly'}.</div>
           </div>
         </div>
       </div>
@@ -85,9 +85,17 @@ export default function TrialStart({
 
   const onRestore = async () => {
     setRestoring(true)
-    await refresh()
+    // poll with backoff (like the paywall) — a just-completed payment's webhook can lag a few seconds,
+    // so a single refresh would falsely report "no subscription found".
+    let found = false
+    for (let i = 0; i < 5; i++) {
+      await refresh()
+      found = useEntitlement.getState().hasSubscription
+      if (found) break
+      if (i < 4) await new Promise((r) => setTimeout(r, 2000))
+    }
     setRestoring(false)
-    if (!useEntitlement.getState().hasSubscription) emitToast('No active subscription found yet.')
+    if (!found) emitToast('No active subscription found yet. If you just paid, give it a moment.')
   }
 
   return (
@@ -130,7 +138,7 @@ export default function TrialStart({
         </div>
 
         <div className="mt-[18px]"><ProFeatures /></div>
-        <div className="mt-[15px]"><TrialTimeline /></div>
+        <div className="mt-[15px]"><TrialTimeline plan={plan} /></div>
         <div className="mt-4"><PlanSelector value={plan} onChange={setPlan} /></div>
       </div>
 

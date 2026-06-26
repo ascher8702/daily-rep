@@ -60,6 +60,8 @@ export interface Entitlement {
 
 // Stripe statuses that still grant access (past_due = dunning grace before cancellation).
 const ACTIVE_STATUSES = ['active', 'trialing', 'past_due']
+// Statuses where a future current_period_end is NOT paid time (the user never successfully paid).
+const NEVER_PAID_STATUSES = ['unpaid', 'incomplete', 'incomplete_expired']
 
 const DAY_MS = 86_400_000
 
@@ -90,9 +92,17 @@ export function deriveEntitlement(
   const trialEndMs = row.trial_ends_at ? new Date(row.trial_ends_at).getTime() : 0
   const trialActive = trialEndMs > now
   const trialDaysLeft = trialActive ? Math.max(0, Math.ceil((trialEndMs - now) / DAY_MS)) : 0
+  // A subscription canceled IMMEDIATELY (admin/portal "cancel now") goes status='canceled' while the
+  // already-paid current_period_end is still in the future — typically with no proration refund. Honor
+  // that paid time so we don't hard-paywall someone who paid through the end of the period. Exclude the
+  // never-actually-paid statuses (a future period end there isn't paid access). The graceful in-app
+  // path uses cancel_at_period_end + status='active', so it's already covered by hasSubscription.
+  const periodEndMs = row.current_period_end ? new Date(row.current_period_end).getTime() : 0
+  const paidPeriodActive =
+    !!row.stripe_subscription_id && periodEndMs > now && !NEVER_PAID_STATUSES.includes(row.status)
 
   return {
-    entitled: hasSubscription || trialActive,
+    entitled: hasSubscription || trialActive || paidPeriodActive,
     inTrial: !hasSubscription && trialActive,
     trialDaysLeft,
     hasSubscription,
@@ -113,16 +123,25 @@ export async function fetchSubscription(): Promise<SubscriptionRow | null> {
   return data
 }
 
+const GENERIC_ERROR = 'Something went wrong. Please try again.'
 const FRIENDLY: Record<string, string> = {
   billing_not_configured: 'Billing isn’t set up yet. Please try again later.',
   'billing is not configured': 'Billing isn’t set up yet. Please try again later.',
   no_billing_account: 'You don’t have a billing account yet — subscribe first.',
   no_subscription: 'You don’t have an active subscription.',
+  subscription_not_active: 'Your subscription isn’t active.',
   invalid_plan: 'That plan is unavailable. Please try again.',
+  'invalid plan': 'That plan is unavailable. Please try again.',
   unauthorized: 'Please sign in again to continue.',
+  missing_authorization: 'Please sign in again to continue.',
+  method_not_allowed: GENERIC_ERROR,
+  internal_error: 'Something went wrong on our end. Please try again.',
+  already_subscribed: 'You already have an active subscription.',
 }
+// NEVER echo a raw server code to the user — fall back to a generic message for any unmapped code, so a
+// new/internal error string can't leak into the UI.
 function friendly(code: string): string {
-  return FRIENDLY[code] ?? code ?? 'Something went wrong. Please try again.'
+  return FRIENDLY[code] ?? GENERIC_ERROR
 }
 
 /** Invoke an Edge Function and normalize its `{ url } | { error }` body, reading error bodies on non-2xx. */

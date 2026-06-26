@@ -107,4 +107,30 @@ describe('deriveEntitlement', () => {
     expect(e.hasSubscription).toBe(true)
     expect(e.inTrial).toBe(false) // banner suppressed — they've already given a card
   })
+
+  // immediate-cancel: paid through the period but canceled "now" → keep access until current_period_end
+  it('keeps access after an IMMEDIATE cancel until the already-paid period end', () => {
+    const e = deriveEntitlement(
+      row({ status: 'canceled', stripe_subscription_id: 'sub_1', trial_ends_at: inDays(-30), current_period_end: inDays(12) }),
+      NOW,
+    )
+    expect(e.entitled).toBe(true) // they paid through inDays(12)
+    expect(e.hasSubscription).toBe(false) // but it's not a live/renewing subscription
+  })
+
+  it('revokes access once the paid period end has passed on a canceled sub', () => {
+    const e = deriveEntitlement(
+      row({ status: 'canceled', stripe_subscription_id: 'sub_1', trial_ends_at: inDays(-30), current_period_end: inDays(-2) }),
+      NOW,
+    )
+    expect(e.entitled).toBe(false)
+  })
+
+  it('does NOT grant paid-period access for a never-paid status with a future period end', () => {
+    const e = deriveEntitlement(
+      row({ status: 'incomplete', stripe_subscription_id: 'sub_1', trial_ends_at: inDays(-30), current_period_end: inDays(12) }),
+      NOW,
+    )
+    expect(e.entitled).toBe(false) // incomplete never actually paid
+  })
 })

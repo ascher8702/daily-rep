@@ -147,24 +147,30 @@ export default function CheckoutReturnPage() {
   const router = useRouter()
   const refresh = useEntitlement((s) => s.refresh)
   const [phase, setPhase] = useState<'confirming' | 'welcome' | 'failed'>('confirming')
+  const hasSubscription = useEntitlement((s) => s.hasSubscription)
   const started = useRef(false)
+
+  // Single source of truth for "we're in": the moment entitlement resolves to a live sub, show the
+  // welcome — no matter HOW it resolved (poll tick, the manual "Refresh status" button, or the store's
+  // own focus/visibility refetch). This is what un-strands a user after the ~30s poll has given up.
+  useEffect(() => {
+    if (hasSubscription) setPhase('welcome')
+  }, [hasSubscription])
 
   useEffect(() => {
     if (started.current) return
     started.current = true
     const status = new URLSearchParams(window.location.search).get('status')
-    if (status === 'cancel') {
-      setPhase('failed')
-      return
-    }
-    // success → poll the entitlement until the webhook lands, then show the welcome.
     let cancelled = false
     let tries = 0
     const tick = async () => {
       await refresh()
       if (cancelled) return
-      if (useEntitlement.getState().hasSubscription) {
-        setPhase('welcome')
+      if (useEntitlement.getState().hasSubscription) return // → welcome via the watcher effect above
+      // A canceled checkout can still belong to an already-entitled user (e.g. they backed out of an
+      // early-subscribe but their trial/sub is live). Only show "payment failed" when truly not entitled.
+      if (status === 'cancel') {
+        setPhase('failed')
         return
       }
       if (++tries < 15) setTimeout(tick, 2000) // ~30s, then stay on confirming with the manual refresh
@@ -173,7 +179,7 @@ export default function CheckoutReturnPage() {
     return () => {
       cancelled = true
     }
-  }, [refresh, router])
+  }, [refresh])
 
   if (phase === 'welcome') return <Welcome />
   if (phase === 'failed') return <PaymentFailed />

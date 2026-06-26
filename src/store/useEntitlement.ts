@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { supabase } from '../lib/supabase'
 import { reportError } from '../lib/telemetry'
 import { useAuth } from './useAuth'
-import { deriveEntitlement, fetchSubscription, type Entitlement } from '../lib/billing'
+import { deriveEntitlement, fetchSubscription, type Entitlement, type SubscriptionRow } from '../lib/billing'
 
 /**
  * Entitlement store — the signed-in user's subscription/trial state, read from the per-user
@@ -51,11 +51,14 @@ function cacheKey(): string | null {
   return email ? `daily-rep-ent:${email.toLowerCase()}` : null
 }
 
-function saveCache(e: Entitlement) {
+// Cache the RAW subscription row (not the derived verdict): time-relative fields like trial expiry are
+// re-evaluated against the CURRENT clock on restore, so a cache written mid-trial isn't re-served as
+// still-active after the trial has elapsed.
+function saveCache(row: SubscriptionRow | null) {
   const key = cacheKey()
   if (!key) return
   try {
-    localStorage.setItem(key, JSON.stringify({ ...e, loading: false }))
+    localStorage.setItem(key, JSON.stringify({ row }))
   } catch {
     /* storage unavailable — in-memory state still applies this session */
   }
@@ -68,8 +71,8 @@ function loadCache(): Entitlement | null {
     const raw = localStorage.getItem(key)
     if (!raw) return null
     const c = JSON.parse(raw)
-    if (typeof c?.entitled !== 'boolean') return null
-    return { ...INITIAL, ...c, loading: false }
+    if (!c || !('row' in c)) return null // absent / legacy verdict-shaped cache → treat as no cache
+    return { loading: false, ...deriveEntitlement((c.row ?? null) as SubscriptionRow | null, Date.now()) }
   } catch {
     return null
   }
@@ -96,7 +99,7 @@ export const useEntitlement = create<EntitlementStore>((set) => ({
       }
       const derived: Entitlement = { loading: false, ...deriveEntitlement(row) }
       set(derived)
-      saveCache(derived)
+      saveCache(row)
     } catch (e) {
       reportError(e, { scope: 'entitlement.refresh' })
       // Do NOT blanket fail-open — that makes the paywall bypassable by blocking one request. Prefer

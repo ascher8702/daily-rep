@@ -57,10 +57,14 @@ export default function MembershipPage() {
   // Billing dates include the year (a renewal can be a year out).
   const fmt = (iso: string | null) =>
     iso ? new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '—'
-  const planLabel = ent.plan === 'monthly' ? 'Monthly' : 'Annual'
-  const price = ent.plan ? PRICING[ent.plan] : PRICING.annual
+  // an unknown plan shouldn't be fabricated as "Annual" with a yearly price — show a neutral label
+  const planLabel = ent.plan === 'monthly' ? 'Monthly' : ent.plan === 'annual' ? 'Annual' : 'Pro'
+  const price = ent.plan ? PRICING[ent.plan] : null
   const autoRenew = ent.hasSubscription && !ent.cancelAtPeriodEnd
+  const hasPeriodEnd = !!ent.currentPeriodEnd
   const periodEnd = fmt(ent.currentPeriodEnd)
+  // subscribed early → status is still 'trialing': the period end is the first-charge date, not a renewal
+  const isTrialing = ent.status === 'trialing'
 
   const portal = async () => {
     setBusy('portal')
@@ -136,12 +140,26 @@ export default function MembershipPage() {
           </div>
           <div className="flex gap-2.5 mt-3.5">
             <div className="flex-1 bg-raised rounded-xl px-3.5 py-2.5">
-              <div className="text-[10.5px] font-bold uppercase tracking-[0.06em] text-fg/40">{ent.cancelAtPeriodEnd ? 'Access until' : 'Price'}</div>
-              <div className="text-base font-black tabular-nums mt-0.5">{ent.cancelAtPeriodEnd ? periodEnd : <>{price.price}<span className="text-[11px] font-semibold text-fg/45">/{ent.plan === 'monthly' ? 'mo' : 'yr'}</span></>}</div>
+              <div className="text-[10.5px] font-bold uppercase tracking-[0.06em] text-fg/40">
+                {ent.cancelAtPeriodEnd ? 'Access until' : isTrialing ? 'Free until' : 'Price'}
+              </div>
+              <div className="text-base font-black tabular-nums mt-0.5">
+                {ent.cancelAtPeriodEnd
+                  ? periodEnd
+                  : isTrialing
+                    ? periodEnd
+                    : price
+                      ? <>{price.price}<span className="text-[11px] font-semibold text-fg/45">/{ent.plan === 'monthly' ? 'mo' : 'yr'}</span></>
+                      : 'Pro'}
+              </div>
             </div>
             <div className="flex-1 bg-raised rounded-xl px-3.5 py-2.5">
-              <div className="text-[10.5px] font-bold uppercase tracking-[0.06em] text-fg/40">{ent.cancelAtPeriodEnd ? 'Then' : 'Renews'}</div>
-              <div className="text-base font-black mt-0.5">{ent.cancelAtPeriodEnd ? 'Ends' : periodEnd}</div>
+              <div className="text-[10.5px] font-bold uppercase tracking-[0.06em] text-fg/40">
+                {ent.cancelAtPeriodEnd ? 'Then' : isTrialing ? 'First charge' : 'Renews'}
+              </div>
+              <div className="text-base font-black mt-0.5">
+                {ent.cancelAtPeriodEnd ? 'Ends' : hasPeriodEnd ? periodEnd : '—'}
+              </div>
             </div>
           </div>
         </div>
@@ -152,7 +170,15 @@ export default function MembershipPage() {
           <div className="flex-1 min-w-0">
             <div className="text-[14.5px] font-extrabold">Auto-renew</div>
             <div className="text-xs font-semibold text-fg/50 mt-0.5">
-              {autoRenew ? `On — renews automatically on ${periodEnd}. Turn off anytime.` : `Off — Pro ends ${periodEnd}. Turn back on to keep it.`}
+              {autoRenew
+                ? isTrialing && hasPeriodEnd
+                  ? `On — free until ${periodEnd}, first charge then, auto-renews after. Turn off anytime.`
+                  : hasPeriodEnd
+                    ? `On — renews automatically on ${periodEnd}. Turn off anytime.`
+                    : 'On — renews automatically. Turn off anytime.'
+                : hasPeriodEnd
+                  ? `Off — Pro ends ${periodEnd}. Turn back on to keep it.`
+                  : 'Off — Pro ends at the period end. Turn back on to keep it.'}
             </div>
           </div>
           <Toggle on={autoRenew} onClick={onToggle} disabled={busy === 'toggle'} />
