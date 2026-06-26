@@ -441,39 +441,33 @@ describe('filterByRange (Progress time-range selector)', () => {
 })
 
 describe('averageRPE (session intensity)', () => {
-  const S = (id: string, weight: number, reps: number, opts: Partial<LoggedSet> = {}): LoggedSet => ({
-    id,
-    weight,
-    reps,
-    done: true,
-    ...opts,
-  })
-  const wk = (sets: LoggedSet[]): Workout => ({
+  const oneSet: LoggedSet = { id: 's', weight: 100, reps: 5, done: true }
+  // effort is now logged once per exercise; build a workout from a list of exercise RPEs
+  const wk = (rpes: (number | undefined)[]): Workout => ({
     id: 'w',
     date: 1,
     completedAt: 1,
     status: 'completed',
     title: 't',
     focus: [],
-    exercises: [{ exerciseId: 'barbell-bench-press', targetReps: [5, 5], sets }],
+    exercises: rpes.map((rpe, i) => ({
+      exerciseId: 'barbell-bench-press',
+      instanceId: `e${i}`,
+      targetReps: [5, 5],
+      sets: [{ ...oneSet, id: `s${i}` }],
+      ...(rpe == null ? {} : { rpe }),
+    })),
   })
 
-  it('returns null when no working set has an rpe', () => {
-    expect(averageRPE(wk([S('a', 100, 5), S('b', 100, 5)]))).toBeNull()
+  it('returns null when no exercise has an rpe', () => {
+    expect(averageRPE(wk([undefined, undefined]))).toBeNull()
   })
 
-  it('averages rpe over completed working sets, ignoring warm-ups / unrated / undone', () => {
-    const w = wk([
-      S('a', 100, 5, { rpe: 8 }),
-      S('b', 100, 5, { rpe: 9 }),
-      S('c', 50, 5, { rpe: 6, warmup: true }), // warm-up excluded
-      S('d', 100, 5, { rpe: 10, done: false }), // not done excluded
-      S('e', 100, 5), // no rpe excluded
-    ])
-    expect(averageRPE(w)).toBe(8.5)
+  it('averages rpe over the rated exercises, ignoring unrated ones', () => {
+    expect(averageRPE(wk([8, 9, undefined]))).toBe(8.5)
   })
 
   it('rounds to one decimal', () => {
-    expect(averageRPE(wk([S('a', 1, 1, { rpe: 7 }), S('b', 1, 1, { rpe: 8 }), S('c', 1, 1, { rpe: 8 })]))).toBe(7.7)
+    expect(averageRPE(wk([7, 8, 8]))).toBe(7.7)
   })
 })

@@ -62,7 +62,6 @@ export interface LoggedSet {
   done: boolean
   /** warmup sets don't count toward working volume */
   warmup?: boolean
-  rpe?: number
 }
 
 /** direction of a progression cue vs last session */
@@ -106,6 +105,9 @@ export interface WorkoutExercise {
   note?: string
   /** progression cue shown in the UI (reps/weight up-down + rationale) */
   coaching?: Coaching
+  /** session effort for the whole exercise on the RPE scale (6–10), captured from the end-of-exercise
+   *  "how many more reps?" prompt as reps-in-reserve (RPE = 10 − RIR). Absent until the user rates it. */
+  rpe?: number
 }
 
 export type WorkoutStatus = 'planned' | 'active' | 'completed'

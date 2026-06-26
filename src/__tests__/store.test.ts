@@ -485,15 +485,6 @@ describe('updateSet input sanitization', () => {
     expect(set0().done).toBe(false)
     useStore.getState().updateSet('barbell-bench-press', origId, { done: 1 as unknown as boolean })
     expect(set0().done).toBe(true)
-
-    // rpe: a finite value is kept; NaN is dropped to undefined; an explicit undefined clears it
-    useStore.getState().updateSet('barbell-bench-press', origId, { rpe: 8 })
-    expect(set0().rpe).toBe(8)
-    useStore.getState().updateSet('barbell-bench-press', origId, { rpe: NaN })
-    expect(set0().rpe).toBeUndefined()
-    useStore.getState().updateSet('barbell-bench-press', origId, { rpe: 9 })
-    useStore.getState().updateSet('barbell-bench-press', origId, { rpe: undefined })
-    expect(set0().rpe).toBeUndefined()
   })
 })
 
@@ -520,32 +511,30 @@ describe('setExerciseEffort (reps-in-reserve → RPE)', () => {
       ],
     }
   }
-  const sets = () => useStore.getState().current!.exercises[0].sets
+  const exercise = () => useStore.getState().current!.exercises[0]
 
-  it('maps reps-in-reserve to RPE (10 − RIR) on completed working sets only', () => {
+  it('maps reps-in-reserve to an exercise-level RPE (10 − RIR), leaving sets untouched', () => {
     useStore.setState({ current: multiSetSession() })
     useStore.getState().setExerciseEffort('barbell-bench-press', 2)
-    const byId = Object.fromEntries(sets().map((s) => [s.id, s]))
-    expect(byId.a.rpe).toBe(8) // 2 more reps left → RPE 8
-    expect(byId.b.rpe).toBe(8)
-    expect(byId.w.rpe).toBeUndefined() // warm-up untouched
-    expect(byId.c.rpe).toBeUndefined() // not-done set untouched
+    expect(exercise().rpe).toBe(8) // 2 more reps left → RPE 8
+    // the effort lives on the exercise, not on any individual set
+    expect(exercise().sets.every((s) => !('rpe' in s) || s.rpe == null)).toBe(true)
   })
 
   it('0 RIR → RPE 10, and a high RIR clamps to the RPE-6 floor', () => {
     useStore.setState({ current: multiSetSession() })
     useStore.getState().setExerciseEffort('barbell-bench-press', 0)
-    expect(sets().find((s) => s.id === 'a')!.rpe).toBe(10)
+    expect(exercise().rpe).toBe(10)
     useStore.getState().setExerciseEffort('barbell-bench-press', 4)
-    expect(sets().find((s) => s.id === 'a')!.rpe).toBe(6) // 4+ caps at the bottom of the scale
+    expect(exercise().rpe).toBe(6) // 4+ caps at the bottom of the scale
   })
 
   it('clears the effort when passed undefined', () => {
     useStore.setState({ current: multiSetSession() })
     useStore.getState().setExerciseEffort('barbell-bench-press', 1)
-    expect(sets().find((s) => s.id === 'a')!.rpe).toBe(9)
+    expect(exercise().rpe).toBe(9)
     useStore.getState().setExerciseEffort('barbell-bench-press', undefined)
-    expect(sets().find((s) => s.id === 'a')!.rpe).toBeUndefined()
+    expect(exercise().rpe).toBeUndefined()
   })
 })
 
@@ -1511,21 +1500,60 @@ describe('restSecondsFor (rest-timer default vs override)', () => {
   })
 })
 
-describe('per-set RPE', () => {
-  it('updateSet sets and clears the rpe field on a set', () => {
-    useStore.setState({ profile: fullGymProfile, current: sessionWith(100, true) })
-    useStore.getState().updateSet('barbell-bench-press', 'a', { rpe: 8 })
-    expect(useStore.getState().current!.exercises[0].sets[0].rpe).toBe(8)
-    useStore.getState().updateSet('barbell-bench-press', 'a', { rpe: undefined })
-    expect(useStore.getState().current!.exercises[0].sets[0].rpe).toBeUndefined()
-  })
-
-  it('preserves rpe on the completed workout through finishWorkout', () => {
+describe('exercise-level RPE', () => {
+  it('preserves the exercise rpe on the completed workout through finishWorkout', () => {
     const cur = sessionWith(100, true)
-    cur.exercises[0].sets[0].rpe = 9
+    cur.exercises[0].rpe = 9
     useStore.setState({ profile: fullGymProfile, current: cur, workouts: [] })
     useStore.getState().finishWorkout()
-    expect(useStore.getState().workouts[0].exercises[0].sets[0].rpe).toBe(9)
+    expect(useStore.getState().workouts[0].exercises[0].rpe).toBe(9)
+  })
+
+  it('mergePersisted hoists legacy per-set rpe up to the exercise (the hardest rated set)', () => {
+    const legacy = {
+      workouts: [
+        {
+          id: 'old',
+          date: 1,
+          status: 'completed',
+          title: 'Legacy',
+          focus: [],
+          exercises: [
+            {
+              exerciseId: 'barbell-bench-press',
+              targetReps: [5, 5],
+              // old shape: rpe lived on each working set; warm-ups/undone are ignored
+              sets: [
+                { id: 'w', weight: 45, reps: 10, done: true, warmup: true, rpe: 5 },
+                { id: 'a', weight: 135, reps: 5, done: true, rpe: 8 },
+                { id: 'b', weight: 135, reps: 5, done: true, rpe: 9 },
+              ],
+            },
+          ],
+        },
+      ],
+    }
+    const merged = mergePersisted(legacy, useStore.getState())
+    expect(merged.workouts[0].exercises[0].rpe).toBe(9) // max of the rated working sets (8, 9)
+  })
+
+  it('mergePersisted leaves a legacy exercise with no rated sets unrated', () => {
+    const legacy = {
+      workouts: [
+        {
+          id: 'old2',
+          date: 1,
+          status: 'completed',
+          title: 'Legacy',
+          focus: [],
+          exercises: [
+            { exerciseId: 'barbell-bench-press', targetReps: [5, 5], sets: [{ id: 'a', weight: 135, reps: 5, done: true }] },
+          ],
+        },
+      ],
+    }
+    const merged = mergePersisted(legacy, useStore.getState())
+    expect(merged.workouts[0].exercises[0].rpe).toBeUndefined()
   })
 })
 

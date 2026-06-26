@@ -151,17 +151,15 @@ function sanitizeNumber(n: number, max: number): number {
 }
 
 /** Whitelist + coerce a LoggedSet patch before it's applied to a set, so a corrupt or unexpected field
- *  (a non-boolean `done`, a NaN `rpe`, a spoofed `id`, or any stray key) can't reach the set and poison
+ *  (a non-boolean `done`, a spoofed `id`, or any stray key) can't reach the set and poison
  *  finishWorkout / stats filters (`s.done && !s.warmup`) or volume/e1RM math. Only known MUTABLE fields
- *  pass through, each coerced; `id` is never patchable. `'rpe' in patch` with undefined is preserved so
- *  the RPE clear-tap still works. */
+ *  pass through, each coerced; `id` is never patchable. */
 function sanitizeSetPatch(patch: Partial<LoggedSet>): Partial<LoggedSet> {
   const clean: Partial<LoggedSet> = {}
   if (patch.weight != null) clean.weight = sanitizeNumber(patch.weight, 9999)
   if (patch.reps != null) clean.reps = sanitizeNumber(patch.reps, 999)
   if ('done' in patch) clean.done = !!patch.done
   if ('warmup' in patch) clean.warmup = !!patch.warmup
-  if ('rpe' in patch) clean.rpe = typeof patch.rpe === 'number' && Number.isFinite(patch.rpe) ? patch.rpe : undefined
   return clean
 }
 
@@ -337,7 +335,16 @@ function repairExercise(ex: unknown): WorkoutExercise | null {
   const tr = e.targetReps
   const goodTargetReps =
     Array.isArray(tr) && tr.length === 2 && tr.every((n) => typeof n === 'number' && Number.isFinite(n))
-  const repaired = goodTargetReps ? e : { ...e, targetReps: DEFAULT_TARGET_REPS }
+  let repaired = goodTargetReps ? e : { ...e, targetReps: DEFAULT_TARGET_REPS }
+  // legacy hydration: RPE used to be logged per-set; hoist any rated working set up to the exercise
+  // (the hardest set best represents the session effort) so old history keeps its RPE after the move.
+  if (repaired.rpe == null && Array.isArray(repaired.sets)) {
+    const setRpes = repaired.sets
+      .filter((s) => s && typeof s === 'object' && !s.warmup && (s as { done?: boolean }).done)
+      .map((s) => (s as { rpe?: unknown }).rpe)
+      .filter((r): r is number => typeof r === 'number' && Number.isFinite(r))
+    if (setRpes.length) repaired = { ...repaired, rpe: Math.max(...setRpes) }
+  }
   return validExercise(repaired) ? repaired : null
 }
 
@@ -1007,12 +1014,7 @@ export const useStore = create<AppState>()(
             const we = w.exercises.find(byKey(exerciseId))
             if (!we) return w
             // reps-in-reserve → RPE (10 − RIR), capped to the 6–10 working scale; undefined clears.
-            const rpe =
-              rir == null || !Number.isFinite(rir) ? undefined : Math.min(10, Math.max(6, 10 - rir))
-            for (const st of we.sets) {
-              if (st.warmup || !st.done) continue
-              st.rpe = rpe
-            }
+            we.rpe = rir == null || !Number.isFinite(rir) ? undefined : Math.min(10, Math.max(6, 10 - rir))
             return w
           }),
         })),

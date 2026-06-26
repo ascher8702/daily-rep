@@ -76,7 +76,7 @@ export default function ExerciseDetailPage() {
     const key = we.instanceId ?? we.exerciseId
     const working = we.sets.filter((s) => !s.warmup)
     const allLogged = working.length > 0 && working.every((s) => s.done)
-    const hasEffort = working.some((s) => s.done && typeof s.rpe === 'number')
+    const hasEffort = typeof we.rpe === 'number'
     if (allLogged && !hasEffort && effortPromptedFor.current !== key) {
       effortPromptedFor.current = key
       setEffortOpen(true)
@@ -96,8 +96,7 @@ export default function ExerciseDetailPage() {
   const doneWorking = workingSets.filter((s) => s.done).length
   const allDone = totalWorking > 0 && doneWorking === totalWorking
   // the effort already recorded for this lift, as reps-in-reserve (RPE 10 → 0 more reps)
-  const loggedSet = workingSets.find((s) => s.done && typeof s.rpe === 'number')
-  const loggedRir = loggedSet?.rpe != null ? Math.max(0, 10 - loggedSet.rpe) : null
+  const loggedRir = we.rpe != null ? Math.max(0, 10 - we.rpe) : null
   const topWeight = workingSets.reduce((m, s) => Math.max(m, s.weight), 0)
   const isBodyweight = !!ex && isBodyweightExercise(ex)
   const plates = ex && topWeight > 0 ? platesPerSide(topWeight, ex, unit) : null

@@ -45,13 +45,10 @@ function workoutFatigue(w: Workout): RecoveryMap {
     const workingSets = (we.sets ?? []).filter((s) => s.done && !s.warmup)
     if (workingSets.length === 0) continue
 
-    // light intensity modifier: higher RPE / heavier rep work fatigues more
-    let intensity = 0
-    for (const s of workingSets) {
-      const rpeFactor = s.rpe ? 0.7 + (s.rpe / 10) * 0.5 : 1
-      intensity += rpeFactor
-    }
-    const setUnits = intensity // ~= number of sets, RPE-weighted
+    // light intensity modifier: a higher exercise RPE fatigues more (unrated → neutral 1.0)
+    const rpe = typeof we.rpe === 'number' && Number.isFinite(we.rpe) ? we.rpe : null
+    const rpeFactor = rpe != null ? 0.7 + (rpe / 10) * 0.5 : 1
+    const setUnits = workingSets.length * rpeFactor // ~= number of sets, RPE-weighted
 
     for (const m of ex.primary) {
       map[m] += setUnits * PRIMARY_PER_SET

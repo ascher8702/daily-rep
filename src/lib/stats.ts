@@ -207,17 +207,15 @@ export function filterByRange(workouts: Workout[], range: ProgressRange, now: nu
   return workouts.filter((w) => (w.completedAt ?? w.date) >= cutoff)
 }
 
-/** Mean RPE across a workout's completed WORKING sets that have an RPE logged (warm-ups and
- *  un-rated sets excluded), to one decimal. null when nothing is rated, so the UI can hide it. */
+/** Mean RPE across a workout's exercises that the user rated (effort is logged once per exercise via
+ *  the end-of-exercise prompt), to one decimal. null when nothing is rated, so the UI can hide it. */
 export function averageRPE(w: Workout): number | null {
   let sum = 0
   let n = 0
   for (const we of w.exercises) {
-    for (const s of we.sets) {
-      if (!s.done || s.warmup || typeof s.rpe !== 'number' || !Number.isFinite(s.rpe)) continue
-      sum += s.rpe
-      n += 1
-    }
+    if (typeof we.rpe !== 'number' || !Number.isFinite(we.rpe)) continue
+    sum += we.rpe
+    n += 1
   }
   return n === 0 ? null : Math.round((sum / n) * 10) / 10
 }

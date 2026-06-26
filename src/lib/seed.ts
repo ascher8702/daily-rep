@@ -64,12 +64,10 @@ export function buildSampleHistory(profile: Profile, now: number): Workout[] {
             set.reps = Math.max(we.targetReps[0], set.reps - 1 + (rand() < 0.5 ? 0 : 2))
           }
           set.done = true
-          if (!set.warmup) {
-            workingSets++
-            // log an RPE roughly in the working range
-            set.rpe = ex?.category === 'compound' ? 8 : 7
-          }
+          if (!set.warmup) workingSets++
         }
+        // log an exercise-level RPE roughly in the working range
+        if (we.sets.some((s) => !s.warmup)) we.rpe = ex?.category === 'compound' ? 8 : 7
       }
 
       // every generated session has working sets, but guard anyway
