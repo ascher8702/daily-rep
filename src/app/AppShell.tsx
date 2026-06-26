@@ -174,8 +174,16 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <ErrorBoundary>
       <ConfirmProvider>
-        <div className="mx-auto max-w-md min-h-full relative">
-          <main className={hideChrome ? '' : 'pb-24'}>{children}</main>
+        {/* When the tab bar shows, the shell is a full-height flex column with the nav as the last
+            child (main grows to fill). This anchors the nav to the bottom of the screen even when a
+            page is short — e.g. History with few sessions — instead of relying on `position: fixed`,
+            which rides up above the bottom on short, non-scrollable pages in mobile Safari. */}
+        <div
+          className={`mx-auto max-w-md relative ${
+            hideChrome ? 'min-h-full' : 'flex min-h-[100dvh] flex-col'
+          }`}
+        >
+          <main className={hideChrome ? '' : 'flex-1'}>{children}</main>
           <RestTimerBar />
           {!hideChrome && <BottomNav />}
           <ToastHost />

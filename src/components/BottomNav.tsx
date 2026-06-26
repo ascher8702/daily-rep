@@ -15,7 +15,7 @@ const TABS = [
 export default function BottomNav() {
   const pathname = usePathname()
   return (
-    <nav className="fixed bottom-0 inset-x-0 z-30 bg-bg/[0.92] backdrop-blur-md border-t border-hairline/[0.08] safe-bottom">
+    <nav className="sticky bottom-0 inset-x-0 z-30 bg-bg/[0.92] backdrop-blur-md border-t border-hairline/[0.08] safe-bottom">
       <div className="mx-auto max-w-md grid grid-cols-5">
         {TABS.map(({ to, label, Icon, end }) => {
           const isActive = end ? pathname === to : pathname.startsWith(to)
