@@ -145,8 +145,9 @@ describe('resolvePlanLifts', () => {
 
   it('skips a null / exerciseId-less lift without throwing (corrupt-data guard)', () => {
     const lifts = [null, { sets: 3, repMin: 8, repMax: 12 }, { exerciseId: 'pushup', sets: 3, repMin: 8, repMax: 12 }]
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const run = () => resolvePlanLifts(lifts as any, owned(), 'general')
+    // Intentionally malformed input (null + a lift with no exerciseId) to exercise the corrupt-data
+    // guard; cast through unknown to the real param type rather than `any`.
+    const run = () => resolvePlanLifts(lifts as unknown as Parameters<typeof resolvePlanLifts>[0], owned(), 'general')
     expect(run).not.toThrow()
     const { resolved } = run()
     expect(resolved).toHaveLength(1)

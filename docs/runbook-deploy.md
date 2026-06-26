@@ -1,0 +1,102 @@
+# Deploy runbook — Daily Rep
+
+How an operator ships Daily Rep to production. The app has two deployable surfaces:
+
+1. **The Next.js frontend** → a Node host (Vercel is the assumed target; `vercel.json` is committed).
+2. **The Supabase backend** → SQL migrations (`supabase/migrations/`) + Edge Functions
+   (`supabase/functions/`) on the project.
+
+> Today both surfaces share a Supabase project with an unrelated app (see
+> `docs/runbook-dedicated-project.md`). Moving to a dedicated project is a prerequisite for a clean
+> production launch; this runbook assumes the **target** project, dedicated or not.
+
+---
+
+## 0. One-time setup
+
+**Frontend host (Vercel):**
+- Import the GitHub repo. Framework preset: **Next.js**. Node **20**. Package manager **pnpm** (the
+  committed `vercel.json` pins install/build commands).
+- Project env vars (Production + Preview):
+  | Var | Value |
+  | --- | --- |
+  | `NEXT_PUBLIC_SUPABASE_URL` | `https://<ref>.supabase.co` |
+  | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | the project anon/publishable key (NOT service_role) |
+  | `NEXT_PUBLIC_SITE_URL` | `https://daily-rep.app` (canonical; used for OG/metadata) |
+  | `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | Turnstile site key (enables CAPTCHA; optional but required for launch) |
+  | `NEXT_PUBLIC_SENTRY_DSN` | error-reporting DSN once the telemetry sink is wired (optional) |
+  - The production build **fail-fasts** if the two `SUPABASE` vars are missing — that's intentional.
+- Domain: point `daily-rep.app` at the host. Keep it consistent with `NEXT_PUBLIC_SITE_URL`, the email
+  templates (`emails/`), and `APP_URL` in the checkout edge function.
+
+**Supabase project:**
+- Edge Function secrets (Dashboard → Project Settings → Edge Functions → Secrets, or `supabase secrets set`):
+  `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` (live values — see `docs/STRIPE_SETUP.md`), and optional
+  `APP_URL`, `STRIPE_PRICE_*`, `STRIPE_PORTAL_CONFIG`.
+- Auth → Attack Protection → enable CAPTCHA (Turnstile) with the matching secret key.
+- Auth → enable leaked-password (HIBP) protection; set a sane min password length.
+- Database → enable **PITR** (the `delete-account` function is irreversible; PITR is the only recovery).
+- Stripe webhook endpoint → `https://<ref>.supabase.co/functions/v1/stripe-webhook`, subscribed to at
+  least `checkout.session.completed` and `customer.subscription.created|updated|deleted`.
+
+---
+
+## 1. Pre-deploy gate (must be green)
+
+From a clean checkout of the commit you intend to ship:
+
+```bash
+pnpm install --frozen-lockfile
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm check:legal          # BLOCKING for production: legal placeholders must be filled by counsel
+NEXT_PUBLIC_SUPABASE_URL=… NEXT_PUBLIC_SUPABASE_ANON_KEY=… pnpm build
+```
+
+`check:legal` is advisory in CI but **blocking here** — do not ship to production while it fails
+(`[Legal Entity]` / `[Jurisdiction]` / age placeholders in Privacy & Terms).
+
+---
+
+## 2. Deploy the backend FIRST (schema, then functions)
+
+Backend changes must land before the frontend that depends on them.
+
+```bash
+# Migrations (review the diff vs. the live project first):
+supabase db push --project-ref <ref>
+
+# Edge Functions:
+supabase functions deploy create-checkout-session create-portal-session set-auto-renew \
+  stripe-webhook delete-account --project-ref <ref>
+```
+
+Verify: `supabase migration list --project-ref <ref>` matches `supabase/migrations/`, and
+`get_advisors(security)` reports no new criticals.
+
+## 3. Deploy the frontend
+
+- **Vercel:** merging to `main` triggers a production deployment (per `vercel.json`). Or
+  `vercel --prod` from the repo.
+
+## 4. Smoke test (production)
+
+- Load the app → sign up a throwaway account → confirm onboarding → trial is active.
+- Subscribe with a live-mode test card path (or a real card you refund) → webhook lands → entitlement
+  flips to Pro within a few seconds on `/checkout/return`.
+- Open the billing portal; toggle auto-renew; confirm it reflects back.
+- Sign out / back in; confirm sync restores data on a second device.
+- Hit `/privacy` and `/terms` signed-out; confirm support email is `support@daily-rep.app`.
+
+## 5. Rollback
+
+- **Frontend:** Vercel → Deployments → promote the previous good deployment (instant). No data impact.
+- **Edge Functions:** redeploy from the previous commit (`git checkout <prev> -- supabase/functions && supabase functions deploy …`).
+- **Database:** migrations are forward-only. For a bad migration, ship a new corrective migration; for
+  data loss, restore via **PITR**. Never hand-edit the live schema — add a migration and `db push`.
+
+## 6. Post-deploy
+
+- Watch error telemetry (once the Sentry sink is wired) and Stripe webhook delivery for failures.
+- Confirm the analytics pg_cron jobs are draining (`analytics.reconcile_queue` depth ≈ 0).

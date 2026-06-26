@@ -207,7 +207,7 @@ export default function Onboarding() {
               Welcome to Daily Rep{name.trim() ? `, ${name.trim()}` : ''}
             </h1>
             <p className="text-fg/55 mt-2.5 text-[15px]">
-              Your training plan, rebuilt every session around how recovered your muscles are. Let's set
+              Your training plan, rebuilt every session around how recovered your muscles are. Let&apos;s set
               you up — it takes a minute.
             </p>
             <label htmlFor="onboarding-name" className="block mt-7 text-xs font-semibold text-fg/60">
@@ -453,7 +453,7 @@ export default function Onboarding() {
         {step === 6 && (
           <div>
             <h1 className="font-display text-[26px] font-black uppercase tracking-[-0.02em] leading-[0.95]">
-              You're all set, {displayName}.
+              You&apos;re all set, {displayName}.
             </h1>
             <p className="text-fg/50 mt-2 text-[15px]">Review your setup, then pick how to start.</p>
 

@@ -1,7 +1,8 @@
 name: CI
 
-# Gate every push/PR on the same checks the loop runs locally: typecheck, tests, and a real production
-# build. Lint is added once ESLint is configured (see docs/loop-progress.md production checklist).
+# Gate every push/PR on the same checks the loop runs locally: lint, typecheck, tests, and a real
+# production build. An advisory legal-placeholder check runs too (non-blocking until counsel fills the
+# Privacy/Terms placeholders; it becomes a BLOCKING pre-deploy gate — see docs/runbook-deploy.md).
 #
 # [HUMAN] required before this is effective: (1) git init + push this repo to GitHub, (2) add repo
 # Secrets NEXT_PUBLIC_SUPABASE_URL + NEXT_PUBLIC_SUPABASE_ANON_KEY (the build fail-fasts without them in
@@ -29,6 +30,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Lint
+        run: pnpm lint
+
       - name: Typecheck
         run: pnpm typecheck
 
@@ -41,5 +45,9 @@ jobs:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
 
-      # - name: Lint  # enable once ESLint is installed/configured
-      #   run: pnpm lint
+      # Advisory until counsel fills the Privacy/Terms placeholders. continue-on-error keeps it from
+      # blocking unrelated PRs; it is enforced as a BLOCKING gate before production deploy
+      # (see docs/runbook-deploy.md). Flip to blocking (remove continue-on-error) at go-live.
+      - name: Legal placeholder check (advisory)
+        run: pnpm check:legal
+        continue-on-error: true

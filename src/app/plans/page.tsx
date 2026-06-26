@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { Equipment } from '@/types'
 import { useStore } from '@/store/useStore'
@@ -117,16 +117,21 @@ export default function PlansScreen() {
     active && activePlan ? active.schedule[activePlan.dayIndex % active.schedule.length] : undefined
 
   const q = query.trim().toLowerCase()
-  const match = (p: WorkoutPlan) =>
-    (dayFilter === 'any' || planFrequencies(p).includes(dayFilter)) &&
-    (equipFilter === 'any' || contextOf(p) === equipFilter) &&
-    (q === '' ||
-      [p.name, p.tagline, p.description, p.author ?? '', p.level].some((f) =>
-        f.toLowerCase().includes(q),
-      ))
+  // Stable across renders (deps = exactly what it closes over) so the memos below depend on `match`
+  // directly and the exhaustive-deps lint is satisfied without re-filtering on every render.
+  const match = useCallback(
+    (p: WorkoutPlan) =>
+      (dayFilter === 'any' || planFrequencies(p).includes(dayFilter)) &&
+      (equipFilter === 'any' || contextOf(p) === equipFilter) &&
+      (q === '' ||
+        [p.name, p.tagline, p.description, p.author ?? '', p.level].some((f) =>
+          f.toLowerCase().includes(q),
+        )),
+    [dayFilter, equipFilter, q],
+  )
 
-  const builtIn = useMemo(() => catalogue.filter(match), [catalogue, dayFilter, equipFilter, q])
-  const customMatch = useMemo(() => customPlans.filter(match), [customPlans, dayFilter, equipFilter, q])
+  const builtIn = useMemo(() => catalogue.filter(match), [catalogue, match])
+  const customMatch = useMemo(() => customPlans.filter(match), [customPlans, match])
 
   const beginPlan = (planId: string, restart: boolean) => {
     startPlan(planId, restart)

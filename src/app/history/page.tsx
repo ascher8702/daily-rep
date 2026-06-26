@@ -366,7 +366,7 @@ function EmptyState({ onStart }: { onStart: () => void }) {
       </div>
       <h2 className="text-xl font-bold mt-5">No workouts yet</h2>
       <p className="text-fg/50 mt-2 text-[15px] max-w-[18rem]">
-        Finish your first session and it'll show up here with your sets, volume and trends.
+        Finish your first session and it&apos;ll show up here with your sets, volume and trends.
       </p>
       <Button onClick={onStart} className="mt-7">
         <PlayIcon size={16} /> Start a workout
