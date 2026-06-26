@@ -1,3 +1,5 @@
+import { withSentryConfig } from '@sentry/nextjs'
+
 /** @type {import('next').NextConfig} */
 const isProd = process.env.NODE_ENV === 'production'
 
@@ -46,4 +48,24 @@ const nextConfig = {
   },
 }
 
-export default nextConfig
+// Wrap with Sentry. Source-map upload runs only when SENTRY_AUTH_TOKEN is set at build (skipped with a
+// warning otherwise, so local/CI builds still pass). tunnelRoute proxies Sentry ingest through a
+// same-origin route, so the CSP connect-src ('self') already covers it AND ad-blockers don't drop events
+// — no CSP change needed. If you remove tunnelRoute, add https://*.sentry.io to connect-src.
+export default withSentryConfig(nextConfig, {
+  org: 'daily-reps',
+  project: 'daily-reps',
+  silent: !process.env.CI,
+  widenClientFileUpload: true,
+  tunnelRoute: '/monitoring',
+  disableLogger: true,
+  // Avoid the SDK pulling in optional instrumentation that isn't used here.
+  automaticVercelMonitors: false,
+  // Tree-shake code we don't use (Session Replay is disabled above) to claw back client bundle weight.
+  bundleSizeOptimizations: {
+    excludeDebugStatements: true,
+    excludeReplayShadowDom: true,
+    excludeReplayIframe: true,
+    excludeReplayWorker: true,
+  },
+})

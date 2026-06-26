@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { reportError, reportEvent, registerTelemetrySink } from '../lib/telemetry'
+import { reportError, reportEvent, registerTelemetrySink, hasTelemetrySink } from '../lib/telemetry'
 
 describe('telemetry seam', () => {
   afterEach(() => {
@@ -39,6 +39,14 @@ describe('telemetry seam', () => {
     reportEvent('workout_started')
     expect(spy).not.toHaveBeenCalled()
     spy.mockRestore()
+  })
+
+  it('hasTelemetrySink reflects whether a backend is registered', () => {
+    expect(hasTelemetrySink()).toBe(false)
+    registerTelemetrySink({ captureError: () => {} })
+    expect(hasTelemetrySink()).toBe(true)
+    registerTelemetrySink(null)
+    expect(hasTelemetrySink()).toBe(false)
   })
 
   it('forwards to a registered sink in production (so prod no longer ships blind)', () => {
