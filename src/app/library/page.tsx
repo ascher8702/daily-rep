@@ -65,6 +65,7 @@ export default function LibraryPage() {
   const current = useStore((s) => s.current)
   const generate = useStore((s) => s.generate)
   const addExercise = useStore((s) => s.addExercise)
+  const removeExercise = useStore((s) => s.removeExercise)
 
   const owned = useMemo(() => new Set(equipment), [equipment])
 
@@ -112,9 +113,15 @@ export default function LibraryPage() {
     emitToast(built ? `Built today's workout · added ${ex.name}` : `Added ${ex.name} to today's workout`)
   }
 
-  // from the detail sheet: add, then close the sheet (stay on the library)
-  const handleAdd = (ex: Exercise) => {
-    addToToday(ex)
+  // tap the check on an already-added exercise to take it back out (removeExercise shows an Undo toast)
+  const toggleToday = (ex: Exercise) => {
+    if (current?.exercises.some((e) => e.exerciseId === ex.id)) removeExercise(ex.id)
+    else addToToday(ex)
+  }
+
+  // from the detail sheet: add or remove, then close the sheet (stay on the library)
+  const handleToggle = (ex: Exercise) => {
+    toggleToday(ex)
     setOpenId(null)
   }
 
@@ -199,7 +206,7 @@ export default function LibraryPage() {
               key={ex.id}
               ex={ex}
               onOpen={() => setOpenId(ex.id)}
-              onQuickAdd={() => addToToday(ex)}
+              onQuickToggle={() => toggleToday(ex)}
               added={!!current?.exercises.some((e) => e.exerciseId === ex.id)}
             />
           ))
@@ -211,7 +218,7 @@ export default function LibraryPage() {
         {active && (
           <ExerciseDetail
             ex={active}
-            onAdd={() => handleAdd(active)}
+            onToggle={() => handleToggle(active)}
             hasCurrent={!!current}
             alreadyIn={!!current?.exercises.some((e) => e.exerciseId === active.id)}
           />
@@ -224,12 +231,12 @@ export default function LibraryPage() {
 function ExerciseCard({
   ex,
   onOpen,
-  onQuickAdd,
+  onQuickToggle,
   added,
 }: {
   ex: Exercise
   onOpen: () => void
-  onQuickAdd: () => void
+  onQuickToggle: () => void
   added: boolean
 }) {
   return (
@@ -244,18 +251,25 @@ function ExerciseCard({
           <ChipTag variant="neutral">{equipmentLabel(mainEquipment(ex))}</ChipTag>
         </div>
       </button>
-      {/* quick-add — stays on the library so several can be queued in a row */}
+      {/* quick toggle — stays on the library so several can be queued (or taken back out) in a row.
+          when already added, the check shows on its own and reveals an × on press to remove. */}
       <button
-        onClick={onQuickAdd}
-        disabled={added}
-        aria-label={added ? `${ex.name} already in today's workout` : `Add ${ex.name} to today's workout`}
-        className={`shrink-0 grid place-items-center h-10 w-10 rounded-full border transition active:scale-90 ${
+        onClick={onQuickToggle}
+        aria-label={added ? `Remove ${ex.name} from today's workout` : `Add ${ex.name} to today's workout`}
+        className={`group shrink-0 grid place-items-center h-10 w-10 rounded-full border transition active:scale-90 ${
           added
-            ? 'bg-recovery-fresh/15 border-recovery-fresh/35 text-recovery-fresh'
+            ? 'bg-recovery-fresh/15 border-recovery-fresh/35 text-recovery-fresh active:bg-red-500/15 active:border-red-500/35 active:text-red-400'
             : 'bg-raised border-hairline/[0.08] text-fg/70 active:bg-card'
         }`}
       >
-        {added ? <CheckIcon size={18} strokeWidth={3} /> : <PlusIcon size={20} />}
+        {added ? (
+          <>
+            <CheckIcon size={18} strokeWidth={3} className="group-active:hidden" />
+            <XIcon size={18} strokeWidth={3} className="hidden group-active:block" />
+          </>
+        ) : (
+          <PlusIcon size={20} />
+        )}
       </button>
     </div>
   )
@@ -263,12 +277,12 @@ function ExerciseCard({
 
 function ExerciseDetail({
   ex,
-  onAdd,
+  onToggle,
   hasCurrent,
   alreadyIn,
 }: {
   ex: Exercise
-  onAdd: () => void
+  onToggle: () => void
   hasCurrent: boolean
   alreadyIn: boolean
 }) {
@@ -329,17 +343,17 @@ function ExerciseDetail({
         <InfoIcon size={15} className="shrink-0 mt-px" />
         <span>
           {alreadyIn
-            ? 'This exercise is already in today’s session.'
+            ? 'This exercise is in today’s session. Tap below to take it back out.'
             : hasCurrent
               ? "Adds this exercise to the end of today's session."
               : "Builds today's session, then adds this exercise."}
         </span>
       </div>
 
-      <Button onClick={onAdd} disabled={alreadyIn} fullWidth>
+      <Button onClick={onToggle} variant={alreadyIn ? 'secondary' : 'primary'} fullWidth>
         {alreadyIn ? (
           <>
-            <CheckIcon size={18} /> Already added
+            <XIcon size={18} /> Remove from today&apos;s workout
           </>
         ) : (
           <>
