@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import type { Theme, Unit } from '@/types'
 import { useStore } from '@/store/useStore'
-import { ACCENTS } from '@/lib/theme'
+import { ACCENTS, DEFAULT_ACCENT } from '@/lib/theme'
 import { BackHeader, SectionLabel, Tile } from '@/components/settings/ui'
 
 function BodyweightField({ value, unit, onChange }: { value?: number; unit: Unit; onChange: (bw: number | undefined) => void }) {
@@ -72,7 +72,7 @@ export default function ProfileAppearancePage() {
           <div className="text-xs font-semibold text-fg/55 mt-4 mb-3">Accent</div>
           <div className="flex flex-wrap gap-3.5">
             {ACCENTS.map((a) => {
-              const active = (profile.accent ?? 'lime') === a.id
+              const active = (profile.accent ?? DEFAULT_ACCENT) === a.id
               return (
                 <button
                   key={a.id}

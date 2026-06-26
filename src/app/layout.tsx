@@ -63,12 +63,21 @@ export const viewport: Viewport = {
   viewportFit: 'cover',
 }
 
-// Applies the saved theme + accent before first paint so there's no light/dark flash.
+// Applies the saved theme + accent (the full brand ramp) before first paint so there's no
+// light/dark or orange→accent flash. Mirrors accentVars() in lib/theme.ts — keep them in sync.
 const noFlashTheme = `(function(){try{
-var A={lime:['190 242 100','77 124 15'],blue:['96 165 250','37 99 235'],violet:['167 139 250','124 58 237'],cyan:['34 211 238','14 116 144'],orange:['251 146 60','194 65 12'],rose:['251 113 133','225 29 72']};
+var A={lime:['190 242 100','77 124 15','24 28 10'],blue:['96 165 250','37 99 235','10 20 40'],violet:['167 139 250','124 58 237','24 16 44'],cyan:['34 211 238','14 116 144','8 26 30'],orange:['255 90 44','194 65 12','26 10 4'],rose:['251 113 133','225 29 72','40 10 16']};
 var p={};try{p=(JSON.parse(localStorage.getItem('daily-rep-v1'))||{}).state.profile||{}}catch(e){}
 var t=p.theme||'system';var d=t==='dark'||(t!=='light'&&window.matchMedia('(prefers-color-scheme: dark)').matches);
-var r=document.documentElement;r.classList.add(d?'dark':'light');var a=A[p.accent]||A.lime;r.style.setProperty('--accent',d?a[0]:a[1]);
+var r=document.documentElement;r.classList.add(d?'dark':'light');
+function sh(tr,amt){var T=amt>=0?255:0,k=Math.abs(amt);return tr.split(' ').map(function(c){return Math.round(+c+(T-c)*k)}).join(' ')}
+var a=A[p.accent]||A.orange,fill=d?a[0]:a[1],S=r.style;
+S.setProperty('--accent',fill);
+S.setProperty('--color-accent',fill);
+S.setProperty('--color-accent-hot',sh(fill,-0.07));
+S.setProperty('--color-accent-warm',sh(fill,0.13));
+S.setProperty('--color-accent-label',d?sh(fill,0.32):fill);
+S.setProperty('--color-on-accent',d?a[2]:'255 255 255');
 }catch(e){document.documentElement.classList.add('dark')}})()`
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

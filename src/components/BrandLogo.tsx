@@ -2,9 +2,9 @@ import { cx } from './ui/Button'
 
 /**
  * Charge Bolt — the Daily Rep brand mark (a lightning bolt on a dark rounded tile), per the
- * `Daily Rep Logo - Charge Bolt` design. The orange gradient bolt + near-black tile are FIXED brand
- * colours (intentionally hard-coded brand art, not themeable UI tokens). The tile surface uses the
- * `on-accent` token (#1A0A04) so it matches the in-app brand black.
+ * `Daily Rep Logo - Charge Bolt` design. The bolt gradient + tile read the brand accent tokens, so the
+ * mark themes with the user's chosen accent (orange by default). The dark-tile bolt uses the
+ * `on-accent` token so it matches the in-app brand black.
  *
  * Use `<BrandLogo wordmark tagline="Strength, measured" />` for the app-icon brand lockup
  * (Auth / Onboarding hero, splash), or `<ChargeBolt />` for the bare mark.
@@ -26,8 +26,9 @@ export function ChargeBolt({ size = 40, dark = false, className }: { size?: numb
     >
       <defs>
         <linearGradient id="chargeBoltGrad" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#FF4D2E" />
-          <stop offset="1" stopColor="#FF7A1E" />
+          {/* follows the chosen accent (the brand gradient vars), so the mark themes with the app */}
+          <stop offset="0" style={{ stopColor: 'rgb(var(--color-accent-hot))' }} />
+          <stop offset="1" style={{ stopColor: 'rgb(var(--color-accent-warm))' }} />
         </linearGradient>
       </defs>
       <path d={CHARGE_BOLT_PATH} fill={dark ? '#180A04' : 'url(#chargeBoltGrad)'} />

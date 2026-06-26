@@ -171,7 +171,7 @@ export interface Profile {
   trialWelcomeSeen?: boolean
   /** color theme preference (defaults to 'system') */
   theme?: Theme
-  /** accent color id (defaults to 'lime'); see lib/theme */
+  /** accent color id (defaults to 'orange'); drives the whole brand ramp — see lib/theme */
   accent?: string
 }
 
