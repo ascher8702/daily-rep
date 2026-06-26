@@ -1,5 +1,5 @@
 import { supabase, STATE_TABLE } from './supabase'
-import { reportError } from './telemetry'
+import { reportError, reportEvent } from './telemetry'
 import type { Json } from './database.types'
 import { useStore, mergePersisted, type AppState } from '../store/useStore'
 
@@ -101,6 +101,15 @@ function persistedState(): Json | null {
   }
 }
 
+/**
+ * A push error that will NEVER succeed on retry, so it must not trigger the backoff retry or an error
+ * report. Currently: a row-level-security denial (Postgres `42501`), e.g. the server-side entitlement
+ * gate blocking a lapsed/un-entitled user's write. Exported for unit testing.
+ */
+export function isTerminalPushError(error: { code?: string } | null | undefined): boolean {
+  return error?.code === '42501'
+}
+
 async function pushNow(attempt = 0): Promise<void> {
   if (!supabase || !userId) return
   const data = persistedState()
@@ -120,7 +129,16 @@ async function pushNow(attempt = 0): Promise<void> {
     lastPushAt = Date.now()
     return
   }
-  // A push can fail transiently (offline / timeout) or hard (RLS / quota). Surface it instead of
+  // A row-level-security denial (Postgres 42501) is a PERMANENT, expected outcome — e.g. a lapsed /
+  // un-entitled user blocked by the server-side entitlement gate (is_active_subscriber). Retrying it
+  // would just storm the backoff, and reporting it as an error would spam telemetry with an expected
+  // state. Treat it as terminal: record a low-severity event and stop (no retry, no reportError). The
+  // client paywall already tells the user; their local data is intact and re-syncs if they re-subscribe.
+  if (isTerminalPushError(error)) {
+    reportEvent('sync.push.denied', { code: error.code })
+    return
+  }
+  // Otherwise a push can fail transiently (offline / timeout) or hard (quota). Surface it instead of
   // silently swallowing it, then retry with bounded exponential backoff. The strictly-increasing client
   // clock (nextClock) means a later retry still wins, and the lastPushedJson guard means a retry
   // self-cancels once any newer push has already succeeded — so a stale retry can't clobber fresher data.

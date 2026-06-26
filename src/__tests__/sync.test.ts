@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { nextClock, backoffMs, parseClock, parsePersistedState } from '../lib/sync'
+import { nextClock, backoffMs, parseClock, parsePersistedState, isTerminalPushError } from '../lib/sync'
 
 describe('nextClock (strictly-increasing sync clock)', () => {
   it('tracks wall time when it is ahead of the last clock', () => {
@@ -34,6 +34,19 @@ describe('backoffMs (push retry backoff)', () => {
   it('caps at 30s for large attempts (no unbounded growth)', () => {
     expect(backoffMs(5)).toBe(30000) // 32s → capped
     expect(backoffMs(20)).toBe(30000)
+  })
+})
+
+describe('isTerminalPushError (RLS denial is not retried)', () => {
+  it('treats a Postgres 42501 RLS denial as terminal', () => {
+    // The server-side entitlement gate rejects a lapsed user's write with 42501 — permanent, expected.
+    expect(isTerminalPushError({ code: '42501' })).toBe(true)
+  })
+  it('treats transient / other / missing errors as retryable', () => {
+    expect(isTerminalPushError({ code: '503' })).toBe(false)
+    expect(isTerminalPushError({ code: undefined })).toBe(false)
+    expect(isTerminalPushError(null)).toBe(false)
+    expect(isTerminalPushError(undefined)).toBe(false)
   })
 })
 

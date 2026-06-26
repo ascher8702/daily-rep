@@ -54,8 +54,10 @@ pnpm check:legal          # BLOCKING for production: legal placeholders must be 
 NEXT_PUBLIC_SUPABASE_URL=… NEXT_PUBLIC_SUPABASE_ANON_KEY=… pnpm build
 ```
 
-`check:legal` is advisory in CI but **blocking here** — do not ship to production while it fails
-(`[Legal Entity]` / `[Jurisdiction]` / age placeholders in Privacy & Terms).
+`check:legal` is advisory in the per-PR CI (so it doesn't red-wall unrelated work) but is enforced
+**mechanically at deploy**: `vercel.json` runs `pnpm check:legal && pnpm build`, so a Vercel build
+(preview or production) **fails** while any placeholder remains (`[Legal Entity]` / `[Jurisdiction]` /
+age placeholders, including multi-line ones, in Privacy & Terms). Do not bypass it.
 
 ---
 
@@ -73,7 +75,9 @@ supabase functions deploy create-checkout-session create-portal-session set-auto
 ```
 
 Verify: `supabase migration list --project-ref <ref>` matches `supabase/migrations/`, and
-`get_advisors(security)` reports no new criticals.
+`get_advisors(security)` reports no new criticals. In particular confirm
+`20260626140000_entitlement_rls_on_daily_rep_state` is applied — until it is, the paywall is
+client-only (no server backstop), so the entitlement smoke check below will not actually enforce.
 
 ## 3. Deploy the frontend
 
@@ -88,6 +92,11 @@ Verify: `supabase migration list --project-ref <ref>` matches `supabase/migratio
 - Open the billing portal; toggle auto-renew; confirm it reflects back.
 - Sign out / back in; confirm sync restores data on a second device.
 - Hit `/privacy` and `/terms` signed-out; confirm support email is `support@daily-rep.app`.
+- **Entitlement enforcement (negative path — proves the P0 gate is live):** for a test user whose
+  trial has expired and who has no active subscription, set `trial_ends_at` in the past and confirm a
+  cloud write is **rejected** server-side (a `daily_rep_state` upsert returns Postgres `42501`); the app
+  logs `sync.push.denied` and does not retry-storm. Then confirm an entitled user's write **succeeds**.
+  If the un-entitled write succeeds, the entitlement migration is not applied — stop and apply it.
 
 ## 5. Rollback
 
