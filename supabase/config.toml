@@ -1,8 +1,9 @@
 # Supabase config — version-controls the per-function JWT gating so the auth posture is reviewable and
 # enforced on `supabase functions deploy`, not just asserted in code comments.
 #
-# NOTE: this project's full schema is managed centrally in the shared Supabase project
-# (ref aswwhsxubqyzbrfoptoq); only the Daily Rep billing migrations are mirrored under supabase/migrations.
+# NOTE: the full Daily Rep schema is now version-controlled under supabase/migrations (schema-as-code).
+# To stand up a fresh, dedicated project (cutover off the old shared one), run
+# scripts/provision-dedicated-project.sh and set project_id below to the new ref (or `supabase link` sets it).
 
 project_id = "aswwhsxubqyzbrfoptoq"
 
