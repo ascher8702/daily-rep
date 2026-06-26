@@ -51,3 +51,15 @@ jobs:
       - name: Legal placeholder check (advisory)
         run: pnpm check:legal
         continue-on-error: true
+
+  # Edge-function (Deno) money-path tests — covers the shared subscription mapper / reconcile predicate
+  # used by stripe-webhook + reconcile-subscriptions. The same logic is also vitest-covered in `verify`.
+  edge-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Deno tests
+        run: deno test --allow-none supabase/functions/

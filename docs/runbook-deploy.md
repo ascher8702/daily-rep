@@ -31,13 +31,18 @@ How an operator ships Daily Rep to production. The app has two deployable surfac
 
 **Supabase project:**
 - Edge Function secrets (Dashboard → Project Settings → Edge Functions → Secrets, or `supabase secrets set`):
-  `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` (live values — see `docs/STRIPE_SETUP.md`), and optional
+  `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` (live values — see `docs/STRIPE_SETUP.md`),
+  `RECONCILE_SECRET` (a random string shared with the reconciliation cron — see below), and optional
   `APP_URL`, `STRIPE_PRICE_*`, `STRIPE_PORTAL_CONFIG`.
+- Reconciliation cron (missed-webhook safety net): after deploying `reconcile-subscriptions`, store its
+  URL + `RECONCILE_SECRET` in Vault so migration `20260626160000` can schedule it (see that migration's
+  header for the exact `vault.create_secret` calls).
 - Auth → Attack Protection → enable CAPTCHA (Turnstile) with the matching secret key.
 - Auth → enable leaked-password (HIBP) protection; set a sane min password length.
 - Database → enable **PITR** (the `delete-account` function is irreversible; PITR is the only recovery).
-- Stripe webhook endpoint → `https://<ref>.supabase.co/functions/v1/stripe-webhook`, subscribed to at
-  least `checkout.session.completed` and `customer.subscription.created|updated|deleted`.
+- Stripe webhook endpoint → `https://<ref>.supabase.co/functions/v1/stripe-webhook`, subscribed to:
+  `checkout.session.completed`, `customer.subscription.created|updated|deleted|paused|resumed`,
+  `invoice.paid`, `invoice.payment_failed`, `customer.deleted`, and `charge.dispute.created`.
 
 ---
 
@@ -71,7 +76,7 @@ supabase db push --project-ref <ref>
 
 # Edge Functions:
 supabase functions deploy create-checkout-session create-portal-session set-auto-renew \
-  stripe-webhook delete-account --project-ref <ref>
+  stripe-webhook delete-account reconcile-subscriptions --project-ref <ref>
 ```
 
 Verify: `supabase migration list --project-ref <ref>` matches `supabase/migrations/`, and

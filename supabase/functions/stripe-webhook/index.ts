@@ -1,6 +1,7 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import Stripe from 'https://esm.sh/stripe@17.7.0?target=deno'
 import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4'
+import { mapSubscriptionToRow, type PriceMap, type StripeSubLike } from '../_shared/subscription.ts'
 
 /**
  * Stripe webhook: keeps each user's `public.subscriptions` row in sync with Stripe. This function is
@@ -8,22 +9,16 @@ import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supa
  * verifying the Stripe signature against STRIPE_WEBHOOK_SECRET. It writes with the service-role client
  * (bypassing RLS, which forbids user writes). For every relevant event we re-RETRIEVE the subscription
  * from Stripe and write its current truth, so out-of-order / duplicate deliveries converge correctly.
+ * The row-mapping logic lives in ../_shared/subscription.ts (unit-tested).
  */
 
-const PRICES = {
+const PRICES: PriceMap = {
   monthly: Deno.env.get('STRIPE_PRICE_MONTHLY') ?? 'price_1TmM9lLy7BVo8A05IudiSYkf',
   annual: Deno.env.get('STRIPE_PRICE_ANNUAL') ?? 'price_1TmM9lLy7BVo8A056dF3HnGw',
-}
-function planForPrice(priceId?: string | null): string | null {
-  if (priceId === PRICES.monthly) return 'monthly'
-  if (priceId === PRICES.annual) return 'annual'
-  return null
 }
 
 // Signature verification needs the WebCrypto-backed provider in Deno; it carries no secret.
 const cryptoProvider = Stripe.createSubtleCryptoProvider()
-
-const toIso = (unix?: number | null) => (unix ? new Date(unix * 1000).toISOString() : null)
 
 /** Build the Stripe + admin clients from env, or null if a required secret is missing. */
 function makeClients(): { stripe: Stripe; admin: SupabaseClient } | null {
@@ -62,25 +57,8 @@ async function syncSubscription(
     return
   }
 
-  const item = sub.items?.data?.[0]
-  const priceId = item?.price?.id ?? null
-  // apiVersion 2024-06-20 exposes current_period_end at the top level; fall back to the item for safety.
-  const cpe = (sub as { current_period_end?: number }).current_period_end ??
-    (item as { current_period_end?: number } | undefined)?.current_period_end ?? null
-
-  const { error } = await admin.from('subscriptions').upsert(
-    {
-      user_id: uid,
-      stripe_customer_id: sub.customer as string,
-      stripe_subscription_id: sub.id,
-      status: sub.status,
-      price_id: priceId,
-      plan: planForPrice(priceId),
-      current_period_end: toIso(cpe),
-      cancel_at_period_end: !!sub.cancel_at_period_end,
-    },
-    { onConflict: 'user_id' },
-  )
+  const row = mapSubscriptionToRow(sub as unknown as StripeSubLike, uid, PRICES)
+  const { error } = await admin.from('subscriptions').upsert(row, { onConflict: 'user_id' })
   if (error) {
     // 23505 = the incoming stripe_customer_id / stripe_subscription_id already belongs to a DIFFERENT
     // user_id row (only reachable via out-of-band re-association). Retrying can't resolve it, so log
@@ -89,6 +67,18 @@ async function syncSubscription(
       console.error('[stripe-webhook] unique conflict (manual reconcile needed)', { subId, uid, msg: error.message })
       return
     }
+    throw error
+  }
+}
+
+/** Mark a deleted Stripe customer's local row canceled (revokes access via the entitlement gate). */
+async function markCustomerCanceled(admin: SupabaseClient, customerId: string) {
+  const { error } = await admin
+    .from('subscriptions')
+    .update({ status: 'canceled', cancel_at_period_end: true })
+    .eq('stripe_customer_id', customerId)
+  if (error) {
+    console.error('[stripe-webhook] failed to cancel row for deleted customer', { customerId, msg: error.message })
     throw error
   }
 }
@@ -129,9 +119,27 @@ Deno.serve(async (req) => {
       }
       case 'customer.subscription.created':
       case 'customer.subscription.updated':
-      case 'customer.subscription.deleted': {
+      case 'customer.subscription.deleted':
+      // Paused/resumed change the subscription status (e.g. → 'paused', which is NOT in our access
+      // statuses, so a paused user is correctly de-entitled); re-retrieving covers them like any update.
+      case 'customer.subscription.paused':
+      case 'customer.subscription.resumed': {
         const sub = event.data.object as Stripe.Subscription
         await syncSubscription(stripe, admin, sub.id, (sub.metadata?.user_id as string) || null)
+        break
+      }
+      case 'customer.deleted': {
+        // The Stripe customer was deleted out-of-band; their subscription object is gone, so re-syncing
+        // it would 404. Mark the local row canceled so the entitlement gate revokes access.
+        const cust = event.data.object as Stripe.Customer
+        await markCustomerCanceled(admin, cust.id)
+        break
+      }
+      case 'charge.dispute.created': {
+        // A chargeback. Stripe will typically follow with a subscription.updated/deleted when it acts,
+        // which we already handle — but log loudly for ops/alerting since it needs a human eye.
+        const d = event.data.object as Stripe.Dispute
+        console.error('[stripe-webhook] charge dispute created', { dispute: d.id, charge: d.charge, amount: d.amount })
         break
       }
       case 'invoice.paid':

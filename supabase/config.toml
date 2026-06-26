@@ -11,6 +11,11 @@ project_id = "aswwhsxubqyzbrfoptoq"
 [functions.stripe-webhook]
 verify_jwt = false
 
+# Reconciliation is invoked server-to-server by pg_cron/pg_net (no Supabase JWT); it authenticates via
+# the shared secret header x-reconcile-secret == RECONCILE_SECRET inside the function.
+[functions.reconcile-subscriptions]
+verify_jwt = false
+
 # These are gated to signed-in callers; each re-derives the uid from the JWT (no IDOR).
 [functions.create-checkout-session]
 verify_jwt = true
