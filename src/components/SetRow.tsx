@@ -33,16 +33,11 @@ interface SetRowProps {
   onReps: (reps: number) => void
   onToggle: () => void
   onRemove: () => void
-  /** set/clear the optional RPE (rate of perceived exertion) on a completed working set */
-  onRpe?: (rpe: number | undefined) => void
 }
-
-/** RPE scale offered after a working set (6–10; RPE 10 = no reps left, 8 ≈ 2 in reserve). */
-const RPE_OPTIONS = [6, 7, 8, 9, 10]
 
 /** One editable set row (weight / reps / done) with an optional tap-to-apply
  *  "last time" reference. Shared by the per-exercise detail page and the inline session-list editor. */
-export function SetRow({ set, label, unit, isBodyweight, ex, domId, lastRef, onApplyLast, onWeight, onReps, onToggle, onRemove, onRpe }: SetRowProps) {
+export function SetRow({ set, label, unit, isBodyweight, ex, domId, lastRef, onApplyLast, onWeight, onReps, onToggle, onRemove }: SetRowProps) {
   const isWarmup = !!set.warmup
   // plate math: non-null only for barbell lifts with a load entered → drives the optional plate sub-line
   const [platesOpen, setPlatesOpen] = useState(false)
@@ -141,32 +136,6 @@ export function SetRow({ set, label, unit, isBodyweight, ex, domId, lastRef, onA
             <span><span className="text-fg/25">Last</span> {refText}</span>
           </button>
           <div />
-        </div>
-      )}
-      {/* RPE — optional effort log, surfaced once a WORKING set is completed (reuses the sub-row slot
-          left empty when a set is done; warm-ups and not-yet-done sets don't show it) */}
-      {set.done && !set.warmup && onRpe && (
-        <div className="flex items-center gap-1.5 px-2 -mt-0.5 pb-1.5">
-          <span className="text-[11px] font-medium text-fg/30 w-7 shrink-0">RPE</span>
-          {RPE_OPTIONS.map((n) => {
-            const active = set.rpe === n
-            return (
-              <button
-                key={n}
-                type="button"
-                onClick={() => onRpe(active ? undefined : n)}
-                aria-pressed={active}
-                aria-label={`RPE ${n}${active ? ', selected — tap to clear' : ''}`}
-                className={`h-7 flex-1 rounded-md text-[12px] font-semibold tabular-nums transition ${
-                  active
-                    ? 'bg-blaze/[0.15] text-blaze-label border border-blaze/40'
-                    : 'bg-raised text-fg/40 border border-hairline/[0.08] active:text-fg/70'
-                }`}
-              >
-                {n}
-              </button>
-            )
-          })}
         </div>
       )}
       {/* plate-math sheet — per-side breakdown for the current load */}

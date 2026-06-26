@@ -497,6 +497,58 @@ describe('updateSet input sanitization', () => {
   })
 })
 
+describe('setExerciseEffort (reps-in-reserve → RPE)', () => {
+  function multiSetSession(): Workout {
+    return {
+      id: 'cur',
+      date: 1,
+      status: 'active',
+      title: 'Test',
+      focus: [],
+      startedAt: 1,
+      exercises: [
+        {
+          exerciseId: 'barbell-bench-press',
+          targetReps: [8, 12],
+          sets: [
+            { id: 'w', weight: 45, reps: 10, done: true, warmup: true },
+            { id: 'a', weight: 135, reps: 8, done: true },
+            { id: 'b', weight: 135, reps: 8, done: true },
+            { id: 'c', weight: 135, reps: 8, done: false },
+          ],
+        },
+      ],
+    }
+  }
+  const sets = () => useStore.getState().current!.exercises[0].sets
+
+  it('maps reps-in-reserve to RPE (10 − RIR) on completed working sets only', () => {
+    useStore.setState({ current: multiSetSession() })
+    useStore.getState().setExerciseEffort('barbell-bench-press', 2)
+    const byId = Object.fromEntries(sets().map((s) => [s.id, s]))
+    expect(byId.a.rpe).toBe(8) // 2 more reps left → RPE 8
+    expect(byId.b.rpe).toBe(8)
+    expect(byId.w.rpe).toBeUndefined() // warm-up untouched
+    expect(byId.c.rpe).toBeUndefined() // not-done set untouched
+  })
+
+  it('0 RIR → RPE 10, and a high RIR clamps to the RPE-6 floor', () => {
+    useStore.setState({ current: multiSetSession() })
+    useStore.getState().setExerciseEffort('barbell-bench-press', 0)
+    expect(sets().find((s) => s.id === 'a')!.rpe).toBe(10)
+    useStore.getState().setExerciseEffort('barbell-bench-press', 4)
+    expect(sets().find((s) => s.id === 'a')!.rpe).toBe(6) // 4+ caps at the bottom of the scale
+  })
+
+  it('clears the effort when passed undefined', () => {
+    useStore.setState({ current: multiSetSession() })
+    useStore.getState().setExerciseEffort('barbell-bench-press', 1)
+    expect(sets().find((s) => s.id === 'a')!.rpe).toBe(9)
+    useStore.getState().setExerciseEffort('barbell-bench-press', undefined)
+    expect(sets().find((s) => s.id === 'a')!.rpe).toBeUndefined()
+  })
+})
+
 describe('toggleSetDone starts a planned session', () => {
   it('marking a working set done flips a planned session to active', () => {
     const cur = sessionWith(100, false)

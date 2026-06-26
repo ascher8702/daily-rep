@@ -115,6 +115,9 @@ export interface AppState {
   addWarmupSets: (exerciseId: string) => void
   removeSet: (exerciseId: string, setId: string) => void
   toggleSetDone: (exerciseId: string, setId: string) => void
+  /** record the end-of-exercise effort as reps-in-reserve, stored as RPE on every completed WORKING
+   *  set: RPE = 10 − RIR (0 more reps → RPE 10), clamped to the 6–10 scale. `undefined` clears it. */
+  setExerciseEffort: (exerciseId: string, rir: number | undefined) => void
 
   // ---- rest timer ----
   startRest: (seconds: number) => void
@@ -994,6 +997,22 @@ export const useStore = create<AppState>()(
             // whitelist + coerce the patch so only known set fields (no spoofed id / corrupt done/rpe)
             // ever reach the set — see sanitizeSetPatch
             if (st) Object.assign(st, sanitizeSetPatch(patch))
+            return w
+          }),
+        })),
+
+      setExerciseEffort: (exerciseId, rir) =>
+        set((s) => ({
+          current: mutateCurrent(s.current, (w) => {
+            const we = w.exercises.find(byKey(exerciseId))
+            if (!we) return w
+            // reps-in-reserve → RPE (10 − RIR), capped to the 6–10 working scale; undefined clears.
+            const rpe =
+              rir == null || !Number.isFinite(rir) ? undefined : Math.min(10, Math.max(6, 10 - rir))
+            for (const st of we.sets) {
+              if (st.warmup || !st.done) continue
+              st.rpe = rpe
+            }
             return w
           }),
         })),
