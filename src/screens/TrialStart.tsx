@@ -7,6 +7,11 @@ import { emitToast } from '@/lib/toast'
 import { ProBrand, ProFeatures, PlanSelector, BlazeCta } from '@/components/billing/shared'
 import { BellIcon, CardIcon, XIcon } from '@/components/icons'
 
+/** CTA label for the early-subscribe (in-trial) context — mirrors the paywall's "Subscribe — $/yr". */
+function subscribeCtaLabel(plan: PlanId) {
+  return `Subscribe — ${PRICING[plan].price}/${plan === 'annual' ? 'yr' : 'mo'}`
+}
+
 function Check({ size = 16, color = '#1a0a04', width = 2.6 }: { size?: number; color?: string; width?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={width} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -97,12 +102,25 @@ export default function TrialStart({
           )}
         </div>
 
-        <h1 className="text-[48px] font-black uppercase tracking-[-0.03em] leading-[0.88] mt-4 font-display">
-          30 Days<br />Free
-        </h1>
-        <p className="text-[14.5px] font-semibold text-fg/60 mt-2.5 leading-snug">
-          Full access to every workout, plan and stat. <span className="text-fg font-bold">No payment due today.</span>
-        </p>
+        {context === 'welcome' ? (
+          <>
+            <h1 className="text-[48px] font-black uppercase tracking-[-0.03em] leading-[0.88] mt-4 font-display">
+              30 Days<br />Free
+            </h1>
+            <p className="text-[14.5px] font-semibold text-fg/60 mt-2.5 leading-snug">
+              Full access to every workout, plan and stat. <span className="text-fg font-bold">No payment due today.</span>
+            </p>
+          </>
+        ) : (
+          <>
+            <h1 className="text-[44px] font-black uppercase tracking-[-0.03em] leading-[0.9] mt-4 font-display">
+              Subscribe<br />to Pro
+            </h1>
+            <p className="text-[14.5px] font-semibold text-fg/60 mt-2.5 leading-snug">
+              Lock in your plan now — your free trial keeps running, with <span className="text-fg font-bold">no payment due today.</span>
+            </p>
+          </>
+        )}
 
         <div className="inline-flex items-center gap-1.5 mt-3.5 rounded-full bg-card border border-hairline/10 px-3 py-[7px]">
           <Check size={14} color="#FF8a4e" width={2.6} />
@@ -118,7 +136,7 @@ export default function TrialStart({
 
       <div className="shrink-0 px-5 pt-3.5 pb-8 bg-bg border-t border-hairline/[0.07]">
         <BlazeCta onClick={onPrimary} disabled={busy}>
-          {busy ? 'Opening checkout…' : 'Start my free trial'}
+          {busy ? 'Opening checkout…' : context === 'welcome' ? 'Start my free trial' : subscribeCtaLabel(plan)}
         </BlazeCta>
         <div className="text-center text-[11px] font-semibold text-fg/40 mt-2.5">
           $0 today · then {PRICING[plan].price}/{plan === 'annual' ? 'yr' : 'mo'} · cancel anytime
