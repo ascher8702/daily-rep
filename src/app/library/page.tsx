@@ -5,7 +5,7 @@ import type { Equipment, Exercise, ExerciseCategory, MuscleGroup } from '@/types
 import { EXERCISES } from '@/data/exercises'
 import { ALL_MUSCLES, MUSCLES, muscleLabel } from '@/data/muscles'
 import { isExerciseDoable } from '@/lib/equipment'
-import { useStore } from '@/store/useStore'
+import { useStore, resolvePlan, planDayExerciseIds, activePlanDayContext } from '@/store/useStore'
 import { emitToast } from '@/lib/toast'
 import Sheet from '@/components/Sheet'
 import { Button } from '@/components/ui/Button'
@@ -61,13 +61,40 @@ function isAvailable(ex: Exercise, owned: Set<Equipment>): boolean {
 }
 
 export default function LibraryPage() {
-  const equipment = useStore((s) => s.profile.equipment)
+  const profile = useStore((s) => s.profile)
   const current = useStore((s) => s.current)
-  const generate = useStore((s) => s.generate)
-  const addExercise = useStore((s) => s.addExercise)
-  const removeExercise = useStore((s) => s.removeExercise)
+  const activePlan = useStore((s) => s.activePlan)
+  const customPlans = useStore((s) => s.customPlans)
+  const planOverrides = useStore((s) => s.planOverrides)
+  const planDayEdits = useStore((s) => s.planDayEdits)
+  const addExerciseToday = useStore((s) => s.addExerciseToday)
+  const removeExerciseToday = useStore((s) => s.removeExerciseToday)
 
-  const owned = useMemo(() => new Set(equipment), [equipment])
+  const owned = useMemo(() => new Set(profile.equipment), [profile.equipment])
+
+  // The exercise ids that make up TODAY's workout, resolved correctly whether or not the session has
+  // been built yet: the live session if there is one, else the active plan day's exercises (swaps +
+  // the user's add/remove edits applied). This is what drives the checks — so they're right on first
+  // paint, no longer waiting for an interaction to materialize `current`.
+  const todayIds = useMemo(() => {
+    if (current) return new Set(current.exercises.map((e) => e.exerciseId))
+    if (activePlan) {
+      const plan = resolvePlan(activePlan.planId, customPlans)
+      if (plan) {
+        const day = plan.schedule[activePlan.dayIndex % plan.schedule.length]
+        return new Set(
+          planDayExerciseIds(day, profile, planOverrides[activePlan.planId] ?? {}, planDayEdits[activePlan.planId]?.[day.label]),
+        )
+      }
+    }
+    return new Set<string>()
+  }, [current, activePlan, customPlans, profile, planOverrides, planDayEdits])
+
+  // the active-plan day "today" maps to (null when there's no plan day to edit) — gates the prompt
+  const planCtx = useMemo(
+    () => activePlanDayContext(current, activePlan, customPlans),
+    [current, activePlan, customPlans],
+  )
 
   const [query, setQuery] = useState('')
   const [muscle, setMuscle] = useState<MuscleGroup | 'all'>('all')
@@ -75,6 +102,8 @@ export default function LibraryPage() {
   // default to "what I can do" — matches the in-session ExercisePicker's default
   const [onlyAvailable, setOnlyAvailable] = useState(true)
   const [openId, setOpenId] = useState<string | null>(null)
+  // pending scope choice for a plan day: { ex, adding } — "just today" vs "going forward"
+  const [pending, setPending] = useState<{ ex: Exercise; adding: boolean } | null>(null)
 
   const results = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -103,26 +132,38 @@ export default function LibraryPage() {
 
   const active = openId ? EXERCISES.find((e) => e.id === openId) ?? null : null
 
-  // Add without leaving the library, so several exercises can be queued in a row. A toast confirms
-  // the add (and that a session was built if there wasn't one); the bottom nav goes to it when ready.
-  const addToToday = (ex: Exercise) => {
-    if (current?.exercises.some((e) => e.exerciseId === ex.id)) return
-    const built = !current
-    if (built) generate()
-    addExercise(ex.id)
-    emitToast(built ? `Built today's workout · added ${ex.name}` : `Added ${ex.name} to today's workout`)
+  // Apply a toggle for a given scope. `forward` (plan days only) also edits the user's plan copy so the
+  // change persists to future sessions of this day. Toasts confirm; removeExerciseToday shows an Undo.
+  const applyToggle = (ex: Exercise, forward: boolean) => {
+    const adding = !todayIds.has(ex.id)
+    const built = !current // the store builds today's session on the first add
+    if (adding) {
+      addExerciseToday(ex.id, forward)
+      emitToast(
+        forward
+          ? `Added ${ex.name} to ${planCtx?.dayTitle ?? 'this day'} going forward`
+          : built
+            ? `Built today's workout · added ${ex.name}`
+            : `Added ${ex.name} to today's workout`,
+      )
+    } else {
+      // removeExerciseToday → removeExercise owns the "Exercise removed · Undo" toast (avoid a 2nd one)
+      removeExerciseToday(ex.id, forward)
+    }
   }
 
-  // tap the check on an already-added exercise to take it back out (removeExercise shows an Undo toast)
-  const toggleToday = (ex: Exercise) => {
-    if (current?.exercises.some((e) => e.exerciseId === ex.id)) removeExercise(ex.id)
-    else addToToday(ex)
+  // Toggle from a card or the detail sheet. On a plan day, ask whether it's just for today or for the
+  // day going forward; off-plan (or no active plan) there's nothing to carry forward, so just do it.
+  const onToggle = (ex: Exercise) => {
+    setOpenId(null) // close the detail sheet if it was the trigger
+    if (planCtx) setPending({ ex, adding: !todayIds.has(ex.id) })
+    else applyToggle(ex, false)
   }
 
-  // from the detail sheet: add or remove, then close the sheet (stay on the library)
-  const handleToggle = (ex: Exercise) => {
-    toggleToday(ex)
-    setOpenId(null)
+  // resolve the scope sheet
+  const commitPending = (forward: boolean) => {
+    if (pending) applyToggle(pending.ex, forward)
+    setPending(null)
   }
 
   return (
@@ -206,8 +247,8 @@ export default function LibraryPage() {
               key={ex.id}
               ex={ex}
               onOpen={() => setOpenId(ex.id)}
-              onQuickToggle={() => toggleToday(ex)}
-              added={!!current?.exercises.some((e) => e.exerciseId === ex.id)}
+              onQuickToggle={() => onToggle(ex)}
+              added={todayIds.has(ex.id)}
             />
           ))
         )}
@@ -218,10 +259,39 @@ export default function LibraryPage() {
         {active && (
           <ExerciseDetail
             ex={active}
-            onToggle={() => handleToggle(active)}
+            onToggle={() => onToggle(active)}
             hasCurrent={!!current}
-            alreadyIn={!!current?.exercises.some((e) => e.exerciseId === active.id)}
+            alreadyIn={todayIds.has(active.id)}
           />
+        )}
+      </Sheet>
+
+      {/* Scope prompt — only on an active plan day: just today vs the day going forward (plan copy) */}
+      <Sheet
+        open={!!pending}
+        onClose={() => setPending(null)}
+        title={pending ? `${pending.adding ? 'Add' : 'Remove'} ${pending.ex.name}` : ''}
+      >
+        {pending && (
+          <div className="pt-1">
+            <p className="text-[15px] leading-snug text-fg/70">
+              {pending.adding
+                ? `Add to just today’s workout, or to every ${planCtx?.dayTitle ?? 'session'} on this plan going forward?`
+                : `Remove from just today’s workout, or from every ${planCtx?.dayTitle ?? 'session'} on this plan going forward?`}
+            </p>
+            <div className="mt-5 flex flex-col gap-2.5">
+              <Button onClick={() => commitPending(true)} variant={pending.adding ? 'primary' : 'secondary'} fullWidth>
+                {pending.adding ? <PlusIcon size={18} /> : <XIcon size={18} />}
+                {pending.adding ? 'Add' : 'Remove'} for {planCtx?.dayTitle ?? 'this day'} going forward
+              </Button>
+              <Button onClick={() => commitPending(false)} variant={pending.adding ? 'secondary' : 'primary'} fullWidth>
+                Just for today
+              </Button>
+            </div>
+            <p className="mt-3 text-center text-xs text-fg/40">
+              Updates your copy of the plan — the original plan isn’t changed.
+            </p>
+          </div>
         )}
       </Sheet>
     </div>

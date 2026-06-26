@@ -1,5 +1,12 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { useStore, mergePersisted, restSecondsFor, type AppState } from '../store/useStore'
+import {
+  useStore,
+  mergePersisted,
+  restSecondsFor,
+  activePlanDayContext,
+  planDayExerciseIds,
+  type AppState,
+} from '../store/useStore'
 import { subscribeToast, type ToastData } from '../lib/toast'
 import type { Equipment, Workout } from '../types'
 import { getPlan, type WorkoutPlan } from '../data/plans'
@@ -1550,5 +1557,133 @@ describe('mergePersisted — profile numeric sanitization (corrupt-blob hardenin
     const def = cur().profile.sessionLength
     expect(merge({ sessionLength: NaN }).sessionLength).toBe(def)
     expect(Number.isFinite(merge({ sessionLength: NaN }).sessionLength)).toBe(true)
+  })
+})
+
+describe('plan-day edits — add/remove for today vs going forward (user plan copy)', () => {
+  // a custom plan whose Day 1 has THREE explicit lifts, so removing one doesn't collapse the day
+  function threeListPlan(id: string): WorkoutPlan {
+    return {
+      ...customPlan(id),
+      schedule: [
+        {
+          label: 'Day 1',
+          title: 'Push',
+          focus: ['chest'],
+          goal: 'strength',
+          lifts: [
+            { exerciseId: 'barbell-bench-press', sets: 5, repMin: 5, repMax: 5 },
+            { exerciseId: 'back-squat', sets: 5, repMin: 5, repMax: 5 },
+            { exerciseId: 'deadlift', sets: 3, repMin: 3, repMax: 3 },
+          ],
+        },
+      ],
+    }
+  }
+  const PLAN_ID = 'planabcdef12'
+  beforeEach(() => {
+    useStore.setState({
+      profile: { ...fullGymProfile, unit: 'lb' },
+      customPlans: [threeListPlan(PLAN_ID)],
+      activePlan: { planId: PLAN_ID, dayIndex: 0, startedAt: 1 },
+      current: null,
+      planOverrides: {},
+      planDayEdits: {},
+      workouts: [],
+    })
+  })
+  const cur = () => useStore.getState().current
+  const ids = () => (cur()?.exercises ?? []).map((e) => e.exerciseId)
+  const edits = () => useStore.getState().planDayEdits[PLAN_ID]?.['Day 1']
+
+  it('activePlanDayContext resolves the plan day with no session, and is null off-plan', () => {
+    const s = useStore.getState()
+    expect(activePlanDayContext(null, s.activePlan, s.customPlans)).toEqual({ planId: PLAN_ID, dayLabel: 'Day 1', dayTitle: 'Push' })
+    // an ad-hoc current (no planId) carries no plan-day context
+    const adhoc = { ...sessionWith(100, false) }
+    expect(activePlanDayContext(adhoc, s.activePlan, s.customPlans)).toBeNull()
+    // no active plan → null
+    expect(activePlanDayContext(null, null, s.customPlans)).toBeNull()
+  })
+
+  it('planDayExerciseIds reflects swaps + add/remove edits', () => {
+    const plan = useStore.getState().customPlans[0]
+    const day = plan.schedule[0]
+    const profile = useStore.getState().profile
+    const base = planDayExerciseIds(day, profile, {}, undefined)
+    expect(base).toEqual(['barbell-bench-press', 'back-squat', 'deadlift'])
+    const edited = planDayExerciseIds(day, profile, {}, { add: ['pullup'], remove: ['barbell-bench-press'] })
+    expect(edited).not.toContain('barbell-bench-press')
+    expect(edited).toContain('pullup')
+  })
+
+  it('addExerciseToday(forward=false) builds today’s session and adds — without touching the plan copy', () => {
+    useStore.getState().addExerciseToday('pullup', false)
+    expect(cur()).toBeTruthy()
+    expect(ids()).toContain('pullup')
+    expect(useStore.getState().planDayEdits[PLAN_ID]).toBeUndefined()
+  })
+
+  it('addExerciseToday(forward=true) records the edit and future plan generations include it', () => {
+    useStore.getState().addExerciseToday('pullup', true)
+    expect(edits()?.add).toContain('pullup')
+    expect(ids()).toContain('pullup')
+    // regenerate the day from scratch → the addition persists
+    useStore.setState({ current: null })
+    useStore.getState().generateFromPlan()
+    expect(ids()).toContain('pullup')
+  })
+
+  it('removeExerciseToday(forward=true) drops a plan lift from today AND future generations', () => {
+    useStore.getState().generateFromPlan()
+    expect(ids()).toContain('barbell-bench-press')
+    useStore.getState().removeExerciseToday('barbell-bench-press', true)
+    expect(edits()?.remove).toContain('barbell-bench-press')
+    expect(ids()).not.toContain('barbell-bench-press')
+    useStore.setState({ current: null })
+    useStore.getState().generateFromPlan()
+    expect(ids()).not.toContain('barbell-bench-press')
+    expect(ids()).toContain('back-squat') // the rest of the day is intact
+  })
+
+  it('removeExerciseToday(forward=false) removes only from today; the plan copy is untouched', () => {
+    useStore.getState().generateFromPlan()
+    useStore.getState().removeExerciseToday('barbell-bench-press', false)
+    expect(ids()).not.toContain('barbell-bench-press')
+    expect(useStore.getState().planDayEdits[PLAN_ID]).toBeUndefined()
+    // a fresh generation brings it back (it was never removed from the plan copy)
+    useStore.setState({ current: null })
+    useStore.getState().generateFromPlan()
+    expect(ids()).toContain('barbell-bench-press')
+  })
+
+  it('adding then removing the same exercise going forward returns to a clean edit (pruned)', () => {
+    useStore.getState().addExerciseToday('pullup', true)
+    useStore.getState().removeExerciseToday('pullup', true)
+    expect(useStore.getState().planDayEdits[PLAN_ID]).toBeUndefined()
+  })
+
+  it('deleting the plan drops its day edits', () => {
+    useStore.getState().addExerciseToday('pullup', true)
+    expect(useStore.getState().planDayEdits[PLAN_ID]).toBeDefined()
+    useStore.getState().deleteCustomPlan(PLAN_ID)
+    expect(useStore.getState().planDayEdits[PLAN_ID]).toBeUndefined()
+  })
+
+  it('mergePersisted prunes planDayEdits for orphaned custom plans + garbage values', () => {
+    const merged = mergePersisted(
+      {
+        customPlans: [],
+        planDayEdits: {
+          planabcdef99: { 'Day 1': { add: ['x'], remove: [] } }, // orphan custom plan → dropped
+          'ppl-6': { 'Day 1': { add: ['pullup'], remove: [], junk: 1 } as never }, // built-in id kept, coerced
+          bad: 'nope',
+        },
+      },
+      useStore.getState(),
+    )
+    expect(merged.planDayEdits.planabcdef99).toBeUndefined()
+    expect(merged.planDayEdits.bad).toBeUndefined()
+    expect(merged.planDayEdits['ppl-6']?.['Day 1']).toEqual({ add: ['pullup'], remove: [] })
   })
 })

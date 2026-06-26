@@ -64,6 +64,12 @@ export interface AppState {
    * days while it's the active plan. NEVER mutates the shared plan definition (PLANS / customPlans).
    */
   planOverrides: Record<string, Record<string, string>>
+  /**
+   * Per-plan, per-day edits to the user's COPY of a plan — exercises they ADDED to or REMOVED from a
+   * plan day "going forward". Keyed planId → dayLabel → { add: ids, remove: ids }. Applied when that
+   * plan day is generated while it's the active plan. NEVER mutates the shared plan definition.
+   */
+  planDayEdits: Record<string, Record<string, { add: string[]; remove: string[] }>>
 
   // ---- onboarding / profile ----
   completeOnboarding: (p: Partial<Profile>) => void
@@ -100,6 +106,12 @@ export interface AppState {
   // ---- editing the current session ----
   addExercise: (exerciseId: string) => void
   removeExercise: (exerciseId: string) => void
+  /** add an exercise to today's workout (building the session first if there isn't one). `forward`
+   *  also adds it to this plan day in the user's plan COPY so future sessions of the day include it. */
+  addExerciseToday: (exerciseId: string, forward: boolean) => void
+  /** remove an exercise from today's workout. `forward` also drops it from this plan day going forward
+   *  in the user's plan COPY (the shared plan definition is never touched). */
+  removeExerciseToday: (exerciseId: string, forward: boolean) => void
   swapExercise: (oldId: string, newId: string) => void
   reorderExercise: (exerciseId: string, dir: -1 | 1) => void
   /** record a "replace in my plan" swap: the active plan's current day will use `toExerciseId` in
@@ -250,26 +262,96 @@ export function restSecondsFor(profile: Pick<Profile, 'goal' | 'restSeconds'>): 
  * lifts + set/rep scheme, substitute any lift the user can't equip (goal-aware), and drive the
  * load through the app's own progression engine (prescribe) with a sensible cold-start fallback.
  */
+/** A per-plan-day edit to the user's plan copy: exercises added to / removed from the day going forward. */
+export interface DayEdit {
+  add: string[]
+  remove: string[]
+}
+
+/**
+ * Resolve a plan day's lifts to concrete exercises: apply the user's "replace in my plan" swaps
+ * (overrides, keyed by the lift's ORIGINAL exercise), then equipment-substitute anything they can't
+ * equip (goal-aware). Pure; shared by the full session builder and the lighter id-only resolver.
+ */
+export function resolveDayLifts(day: PlanDay, profile: Profile, overrides: Record<string, string> = {}) {
+  const goal = day.goal ?? profile.goal
+  const owned = new Set<Equipment>([...profile.equipment, 'bodyweight'])
+  const lifts = (day.lifts ?? []).map((l) => {
+    const to = overrides[`${day.label}::${l.exerciseId}`]
+    return { ...l, planLiftId: l.exerciseId, exerciseId: to && to !== l.exerciseId ? to : l.exerciseId }
+  })
+  return { resolved: resolvePlanLifts(lifts, owned, goal).resolved, goal }
+}
+
+/**
+ * The exercise IDs that make up an active plan day — swaps AND the user's add/remove edits applied —
+ * WITHOUT building full sets. Lets the library show today's exercises as checked before the session
+ * is materialized. Mirrors buildPlanDayExercises' inclusion/exclusion exactly.
+ */
+export function planDayExerciseIds(
+  day: PlanDay,
+  profile: Profile,
+  overrides: Record<string, string> = {},
+  edit?: DayEdit,
+): string[] {
+  const { resolved } = resolveDayLifts(day, profile, overrides)
+  const removed = new Set(edit?.remove ?? [])
+  const ids = resolved
+    .filter(({ lift, exerciseId }) => !removed.has(exerciseId) && !removed.has(lift.planLiftId))
+    .map(({ exerciseId }) => exerciseId)
+  for (const addId of edit?.add ?? []) if (!ids.includes(addId)) ids.push(addId)
+  return ids
+}
+
+/**
+ * Which active-plan day "today's workout" maps to — for attaching add/remove edits and for resolving
+ * the checked-state on the library. Null when there's no plan context: no active plan, the plan no
+ * longer resolves, or the current session is an ad-hoc (non-plan) workout.
+ */
+export function activePlanDayContext(
+  current: Workout | null,
+  activePlan: ActivePlan | null,
+  customPlans: WorkoutPlan[],
+): { planId: string; dayLabel: string; dayTitle: string } | null {
+  if (!activePlan) return null
+  const plan = resolvePlan(activePlan.planId, customPlans)
+  if (!plan) return null
+  if (current) {
+    // an in-progress session carries plan context only if it IS this plan's day
+    if (current.planId === activePlan.planId && current.planDayLabel) {
+      const day = plan.schedule.find((d) => d.label === current.planDayLabel)
+      return { planId: activePlan.planId, dayLabel: current.planDayLabel, dayTitle: day?.title ?? current.planDayLabel }
+    }
+    return null
+  }
+  // no session yet → today's plan day is today's workout
+  const day = plan.schedule[activePlan.dayIndex % plan.schedule.length]
+  return { planId: activePlan.planId, dayLabel: day.label, dayTitle: day.title }
+}
+
+/**
+ * Build a session from a plan day's EXPLICIT lifts (hybrid fidelity): keep the program's real
+ * lifts + set/rep scheme, substitute any lift the user can't equip (goal-aware), and drive the
+ * load through the app's own progression engine (prescribe) with a sensible cold-start fallback.
+ * The user's per-day `edit` (add/remove going forward) is applied on top.
+ */
 function buildPlanDayExercises(
   day: PlanDay,
   profile: Profile,
   history: Workout[],
   overrides: Record<string, string> = {},
+  edit?: DayEdit,
 ): WorkoutExercise[] {
-  const goal = day.goal ?? profile.goal
+  const { resolved, goal } = resolveDayLifts(day, profile, overrides)
   const effProfile = day.goal ? { ...profile, goal: day.goal } : profile
-  const owned = new Set<Equipment>([...profile.equipment, 'bodyweight'])
-  // apply active-plan "replace in my plan" swaps, keyed by the plan lift's ORIGINAL exercise; carry
-  // `planLiftId` (the original) so a later swap re-keys to the same plan slot. Plan def is untouched.
-  const lifts = (day.lifts ?? []).map((l) => {
-    const to = overrides[`${day.label}::${l.exerciseId}`]
-    return { ...l, planLiftId: l.exerciseId, exerciseId: to && to !== l.exerciseId ? to : l.exerciseId }
-  })
-  const { resolved } = resolvePlanLifts(lifts, owned, goal)
+  const removed = new Set(edit?.remove ?? [])
+  // drop lifts the user removed from this plan day going forward (match the resolved exercise or the
+  // plan slot's original id)
+  const kept = resolved.filter(({ lift, exerciseId }) => !removed.has(exerciseId) && !removed.has(lift.planLiftId))
   // when a lift appears more than once in a day (e.g. 5/3/1 main wave + BBB 5x10 of the same lift),
   // track each occurrence so prescribe() reads THAT block's own history, not the first block's
   const occ = new Map<string, number>()
-  return resolved.map(({ lift, exerciseId }) => {
+  const built: WorkoutExercise[] = kept.map(({ lift, exerciseId }) => {
     const ex = getExercise(exerciseId)
     const reps: [number, number] = [lift.repMin, lift.repMax]
     const occurrence = occ.get(exerciseId) ?? 0
@@ -302,6 +384,14 @@ function buildPlanDayExercises(
       coaching: presc ? { note: presc.note, incWeight: presc.incWeight, weightDir: presc.weightDir, repsDir: presc.repsDir } : undefined,
     }
   })
+  // append exercises the user added to this plan day going forward (skip any already present)
+  const present = new Set(built.map((e) => e.exerciseId))
+  for (const addId of edit?.add ?? []) {
+    if (present.has(addId)) continue
+    present.add(addId)
+    built.push(defaultSchemeForNewExercise(addId, profile, history))
+  }
+  return built
 }
 
 // every WorkoutExercise the screens read must have a sets array and a 2-tuple targetReps;
@@ -390,6 +480,47 @@ function prunePlanOverrides(
   return out
 }
 
+/** Coerce + prune persisted planDayEdits: drop garbage values, orphaned custom-plan ids, and any
+ *  day-edit that isn't a pair of string arrays. Mirrors prunePlanOverrides for the add/remove map. */
+function prunePlanDayEdits(
+  raw: unknown,
+  customPlans: WorkoutPlan[],
+): Record<string, Record<string, DayEdit>> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
+  const strs = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [])
+  const out: Record<string, Record<string, DayEdit>> = {}
+  for (const [planId, days] of Object.entries(raw as Record<string, unknown>)) {
+    if (!days || typeof days !== 'object' || Array.isArray(days)) continue
+    if (looksLikeCustomPlanId(planId) && !customPlans.some((p) => p.id === planId)) continue // orphan
+    const dayMap: Record<string, DayEdit> = {}
+    for (const [dayLabel, e] of Object.entries(days as Record<string, unknown>)) {
+      if (!e || typeof e !== 'object') continue
+      const add = strs((e as DayEdit).add)
+      const remove = strs((e as DayEdit).remove)
+      if (add.length || remove.length) dayMap[dayLabel] = { add, remove }
+    }
+    if (Object.keys(dayMap).length) out[planId] = dayMap
+  }
+  return out
+}
+
+/** Immutably apply `fn` to one plan-day's edit, pruning the entry (and the plan) when it goes empty. */
+function withDayEdit(
+  all: Record<string, Record<string, DayEdit>>,
+  planId: string,
+  dayLabel: string,
+  fn: (e: DayEdit) => DayEdit,
+): Record<string, Record<string, DayEdit>> {
+  const planMap = { ...(all[planId] ?? {}) }
+  const cur = planMap[dayLabel] ?? { add: [], remove: [] }
+  const next = fn({ add: [...cur.add], remove: [...cur.remove] })
+  if (next.add.length === 0 && next.remove.length === 0) delete planMap[dayLabel]
+  else planMap[dayLabel] = next
+  const out = { ...all, [planId]: planMap }
+  if (Object.keys(planMap).length === 0) delete out[planId]
+  return out
+}
+
 /**
  * Defensively merge persisted state over defaults so a corrupt/older/partial blob can't
  * hydrate with the wrong shapes and crash the app. Exported for regression testing.
@@ -473,6 +604,7 @@ export function mergePersisted(persisted: unknown, current: AppState): AppState 
     },
     // drop swap-overrides orphaned by a deleted custom plan (slug/DB ids preserved — see helper)
     planOverrides: prunePlanOverrides(p.planOverrides, customPlans),
+    planDayEdits: prunePlanDayEdits(p.planDayEdits, customPlans),
     profile: {
       ...current.profile,
       ...profile,
@@ -507,6 +639,7 @@ export const useStore = create<AppState>()(
       customPlans: [],
       planProgress: {},
       planOverrides: {},
+      planDayEdits: {},
 
       completeOnboarding: (p) =>
         set((s) => ({ profile: { ...s.profile, ...p, onboarded: true } })),
@@ -721,18 +854,24 @@ export const useStore = create<AppState>()(
         }),
 
       generateFromPlan: (shuffle = 0) => {
-        const { profile, workouts, activePlan, customPlans, planOverrides } = get()
+        const { profile, workouts, activePlan, customPlans, planOverrides, planDayEdits } = get()
         if (!activePlan) return
         const plan = resolvePlan(activePlan.planId, customPlans)
         if (!plan) return
         const day = plan.schedule[activePlan.dayIndex % plan.schedule.length]
+        const edit = planDayEdits[activePlan.planId]?.[day.label]
         const liftCount = day.lifts?.length ?? 0
+        // a day with no plan lifts but user-added exercises should still build from those additions
+        const buildable = liftCount > 0 || (edit?.add.length ?? 0) > 0
         // hybrid: build the program's explicit lifts (with distinct equipment substitution + any
-        // active-plan "replace in my plan" swaps)
-        const hybrid = liftCount ? buildPlanDayExercises(day, profile, workouts, planOverrides[activePlan.planId] ?? {}) : []
+        // active-plan "replace in my plan" swaps), then apply the user's add/remove edits for the day
+        const hybrid = buildable ? buildPlanDayExercises(day, profile, workouts, planOverrides[activePlan.planId] ?? {}, edit) : []
         // heavy substitution collapse (e.g. a barbell day reduced to 1 bodyweight exercise) makes a
-        // thin/odd session — prefer the fuller recovery-aware generation from the day's focus instead
-        const collapsed = hybrid.length < Math.min(3, liftCount)
+        // thin/odd session — prefer the fuller recovery-aware generation from the day's focus instead.
+        // BUT once the user has hand-edited this day (add/remove), trust their shaped hybrid rather than
+        // regenerating from focus (which would silently undo a removal or drop their additions).
+        const hasEdits = !!edit && (edit.add.length > 0 || edit.remove.length > 0)
+        const collapsed = !hasEdits && hybrid.length > 0 && hybrid.length < Math.min(3, liftCount)
         let w: Workout
         if (hybrid.length > 0 && !collapsed) {
           w = {
@@ -842,11 +981,13 @@ export const useStore = create<AppState>()(
       deleteCustomPlan: (id) =>
         set((s) => {
           const { [id]: _removed, ...restOverrides } = s.planOverrides ?? {}
+          const { [id]: _removedEdits, ...restEdits } = s.planDayEdits ?? {}
           return {
           customPlans: s.customPlans.filter((p) => p.id !== id),
           // if the deleted plan was the one being followed, stop following it
           activePlan: s.activePlan?.planId === id ? null : s.activePlan,
           planOverrides: restOverrides, // drop the deleted plan's swap overrides
+          planDayEdits: restEdits, // …and its add/remove day edits
           current:
             s.current?.planId === id ? { ...s.current, planId: undefined, planDayLabel: undefined } : s.current,
           }
@@ -896,6 +1037,42 @@ export const useStore = create<AppState>()(
           }),
         }))
         if (undo) emitToast('Exercise removed', { label: 'Undo', onAction: undo })
+      },
+
+      addExerciseToday: (exerciseId, forward) => {
+        const ctx = activePlanDayContext(get().current, get().activePlan, get().customPlans)
+        // record the "going forward" edit FIRST so a freshly-built plan session already includes it
+        if (forward && ctx) {
+          set((s) => ({
+            planDayEdits: withDayEdit(s.planDayEdits, ctx.planId, ctx.dayLabel, (e) => ({
+              add: e.add.includes(exerciseId) ? e.add : [...e.add, exerciseId],
+              remove: e.remove.filter((x) => x !== exerciseId),
+            })),
+          }))
+        }
+        // materialize today's session if there isn't one (its plan day if on a plan, else a generic one)
+        if (!get().current) {
+          if (ctx) get().generateFromPlan()
+          else get().generate()
+        }
+        get().addExercise(exerciseId) // no-op if the build above already included it
+      },
+
+      removeExerciseToday: (exerciseId, forward) => {
+        const ctx = activePlanDayContext(get().current, get().activePlan, get().customPlans)
+        if (forward && ctx) {
+          set((s) => ({
+            planDayEdits: withDayEdit(s.planDayEdits, ctx.planId, ctx.dayLabel, (e) =>
+              // an added-going-forward exercise un-adds; a plan lift goes onto the remove list
+              e.add.includes(exerciseId)
+                ? { add: e.add.filter((x) => x !== exerciseId), remove: e.remove }
+                : { add: e.add, remove: e.remove.includes(exerciseId) ? e.remove : [...e.remove, exerciseId] },
+            ),
+          }))
+        }
+        // if only a plan-day preview is showing (no session yet), build it first so the removal sticks
+        if (!get().current && ctx) get().generateFromPlan()
+        get().removeExercise(exerciseId) // shows the Undo toast when it actually removes something
       },
 
       swapExercise: (oldId, newId) =>
@@ -1207,7 +1384,7 @@ export const useStore = create<AppState>()(
         const { profile } = get()
         const sample = buildSampleHistory(profile, Date.now())
         // sample data is a clean demo slate — clear any in-progress session and plan
-        set({ workouts: sample, current: null, restEndsAt: null, restDuration: 0, activePlan: null, planProgress: {}, planOverrides: {} })
+        set({ workouts: sample, current: null, restEndsAt: null, restDuration: 0, activePlan: null, planProgress: {}, planOverrides: {}, planDayEdits: {} })
         emitToast(`Loaded ${sample.length} sample workouts`)
       },
 
@@ -1222,6 +1399,7 @@ export const useStore = create<AppState>()(
           customPlans: [],
           planProgress: {},
           planOverrides: {},
+          planDayEdits: {},
         }),
     }),
     {
@@ -1250,6 +1428,7 @@ export const useStore = create<AppState>()(
         customPlans: s.customPlans,
         planProgress: s.planProgress,
         planOverrides: s.planOverrides,
+        planDayEdits: s.planDayEdits,
       }),
       // Defensively merge persisted state over defaults so a corrupt/older/partial
       // blob can't hydrate with the wrong shapes and crash the app (no array, etc.).
