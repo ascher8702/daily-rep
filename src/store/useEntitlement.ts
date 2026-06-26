@@ -10,9 +10,10 @@ import { deriveEntitlement, fetchSubscription, type Entitlement, type Subscripti
  * tab regains focus so a status change made elsewhere (the Stripe portal, another device, the webhook
  * landing after Checkout) is reflected without a reload.
  *
- * This is a *soft* gate (the app is client-rendered and offline-capable, so a determined account holder
- * can ultimately bypass any client check — real enforcement would require gating the data server-side).
- * But we deliberately AVOID a blanket fail-open on read errors: that would let anyone lapsed block a
+ * This client gate drives UX. Real enforcement is server-side: RLS gates WRITES to daily_rep_state
+ * behind public.is_active_subscriber() (migration 20260626140000), which mirrors deriveEntitlement —
+ * so a lapsed account can read/export its data but can't sync new data up regardless of client tricks.
+ * We still deliberately AVOID a blanket fail-open on read errors here: that would let anyone lapsed block a
  * single request and get in. Instead we cache the last-known-good entitlement per user and fall back to
  * THAT on error — a returning lapsed user stays gated, while a paying user keeps offline access. Only a
  * user we have never successfully resolved (e.g. a brand-new account on a flaky first load) gets a
