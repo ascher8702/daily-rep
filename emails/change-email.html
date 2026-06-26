@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="color-scheme" content="dark">
+  <meta name="supported-color-schemes" content="dark light">
+  <title>Confirm your new Daily Rep email</title>
+  <!--[if mso]>
+  <style>table,td,a{font-family:Arial,Helvetica,sans-serif !important;}</style>
+  <![endif]-->
+  <style>
+    body { margin: 0; padding: 0; width: 100% !important; }
+    a { text-decoration: none; }
+    @media only screen and (max-width: 600px) {
+      .container { width: 100% !important; }
+      .px { padding-left: 24px !important; padding-right: 24px !important; }
+    }
+  </style>
+</head>
+<body style="margin:0;padding:0;background-color:#0B0D11;">
+  <div style="display:none;max-height:0;overflow:hidden;mso-hide:all;font-size:1px;line-height:1px;color:#0B0D11;opacity:0;">
+    Confirm the new email address for your Daily Rep account.
+  </div>
+
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#0B0D11;">
+    <tr>
+      <td align="center" style="padding:32px 16px;">
+        <table role="presentation" class="container" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:600px;">
+          <tr><td style="height:4px;line-height:4px;font-size:4px;background:linear-gradient(90deg,#FF4D2E,#FF7A1E);background-color:#FF5A2C;border-radius:4px;">&nbsp;</td></tr>
+        </table>
+
+        <table role="presentation" class="container" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:600px;">
+          <tr>
+            <td align="center" class="px" style="padding:36px 40px 28px 40px;">
+              <img src="https://daily-rep.app/icon-192.png" width="56" height="56" alt="Daily Rep" style="display:block;border:0;width:56px;height:56px;border-radius:15px;">
+              <div style="margin-top:14px;font-family:'Archivo','Helvetica Neue',Arial,sans-serif;font-size:22px;font-weight:900;letter-spacing:1px;text-transform:uppercase;color:#F4F6F8;">Daily&nbsp;Rep</div>
+              <div style="margin-top:6px;font-family:'Hanken Grotesk',Arial,sans-serif;font-size:11px;font-weight:800;letter-spacing:2px;text-transform:uppercase;color:#FF8A4E;">Strength, measured</div>
+            </td>
+          </tr>
+        </table>
+
+        <table role="presentation" class="container" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:600px;background-color:#14171E;border:1px solid rgba(255,255,255,0.08);border-radius:16px;">
+          <tr>
+            <td class="px" style="padding:40px 44px 12px 44px;">
+              <h1 style="margin:0;font-family:'Archivo','Helvetica Neue',Arial,sans-serif;font-size:26px;line-height:1.15;font-weight:900;color:#F4F6F8;">Confirm your new email</h1>
+              <p style="margin:16px 0 0 0;font-family:'Hanken Grotesk',Arial,sans-serif;font-size:15px;line-height:1.6;color:rgba(244,246,248,0.72);">
+                You asked to change the email address on your Daily Rep account. Confirm the change to start using your new address to sign in.
+              </p>
+            </td>
+          </tr>
+
+          <!-- old -> new summary -->
+          <tr>
+            <td class="px" style="padding:22px 44px 0 44px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#1B1F28;border:1px solid rgba(255,255,255,0.08);border-radius:12px;">
+                <tr>
+                  <td style="padding:16px 18px;">
+                    <div style="font-family:'Hanken Grotesk',Arial,sans-serif;font-size:10.5px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;color:rgba(244,246,248,0.4);">Current</div>
+                    <div style="margin-top:3px;font-family:'Hanken Grotesk',Arial,sans-serif;font-size:14px;font-weight:700;color:rgba(244,246,248,0.85);word-break:break-all;">{{ .Email }}</div>
+                    <div style="margin:14px 0;font-family:Arial,sans-serif;font-size:16px;color:#FF8A4E;">&darr;</div>
+                    <div style="font-family:'Hanken Grotesk',Arial,sans-serif;font-size:10.5px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;color:#FF8A4E;">New</div>
+                    <div style="margin-top:3px;font-family:'Hanken Grotesk',Arial,sans-serif;font-size:14px;font-weight:700;color:#F4F6F8;word-break:break-all;">{{ .NewEmail }}</div>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <tr>
+            <td align="center" class="px" style="padding:24px 44px 8px 44px;">
+              <!--[if mso]>
+              <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="{{ .ConfirmationURL }}" style="height:52px;v-text-anchor:middle;width:300px;" arcsize="26%" stroke="f" fillcolor="#FF5A2C">
+                <w:anchorlock/>
+                <center style="color:#1A0A04;font-family:Arial,sans-serif;font-size:16px;font-weight:bold;">Confirm email change</center>
+              </v:roundrect>
+              <![endif]-->
+              <!--[if !mso]><!-->
+              <a href="{{ .ConfirmationURL }}" target="_blank" style="display:inline-block;background:linear-gradient(135deg,#FF4D2E,#FF7A1E);background-color:#FF5A2C;color:#1A0A04;font-family:'Hanken Grotesk',Arial,sans-serif;font-size:16px;font-weight:800;line-height:1;text-decoration:none;padding:17px 40px;border-radius:13px;letter-spacing:0.3px;">Confirm email change</a>
+              <!--<![endif]-->
+            </td>
+          </tr>
+
+          <tr>
+            <td class="px" style="padding:20px 44px 4px 44px;">
+              <p style="margin:0;font-family:'Hanken Grotesk',Arial,sans-serif;font-size:12px;line-height:1.6;color:rgba(244,246,248,0.4);">
+                Button not working? Paste this link into your browser:
+              </p>
+              <p style="margin:6px 0 0 0;font-family:'Hanken Grotesk',Arial,sans-serif;font-size:12px;line-height:1.6;word-break:break-all;">
+                <a href="{{ .ConfirmationURL }}" target="_blank" style="color:#FF8A4E;text-decoration:underline;">{{ .ConfirmationURL }}</a>
+              </p>
+            </td>
+          </tr>
+
+          <tr>
+            <td class="px" style="padding:24px 44px 40px 44px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-top:1px solid rgba(255,255,255,0.08);">
+                <tr><td style="padding-top:20px;">
+                  <p style="margin:0;font-family:'Hanken Grotesk',Arial,sans-serif;font-size:12.5px;line-height:1.6;color:rgba(244,246,248,0.4);">
+                    If you didn&rsquo;t request this change, do not confirm it and consider changing your password &mdash; someone may have access to your account.
+                  </p>
+                </td></tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+
+        <table role="presentation" class="container" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:600px;">
+          <tr>
+            <td align="center" style="padding:28px 40px 8px 40px;">
+              <p style="margin:0;font-family:'Hanken Grotesk',Arial,sans-serif;font-size:11px;line-height:1.6;color:rgba(244,246,248,0.3);">
+                Daily Rep &middot; Personalized strength training<br>
+                This is an automated message &mdash; please don&rsquo;t reply.
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

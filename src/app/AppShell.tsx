@@ -15,11 +15,13 @@ import HomeSkeleton from '@/components/HomeSkeleton'
 import { ConfirmProvider } from '@/components/ConfirmProvider'
 import Onboarding from '@/screens/Onboarding'
 import Auth from '@/screens/Auth'
+import ResetPassword from '@/screens/ResetPassword'
 import Paywall from '@/screens/Paywall'
 import TrialStart from '@/screens/TrialStart'
 
-/** Routes that render without the auth gate / app chrome (readable signed-out). */
-const PUBLIC_ROUTES = ['/privacy', '/terms']
+/** Routes that render without the auth gate / app chrome (readable signed-out). /reset-password is the
+ *  landing for the password-recovery email link, which must be reachable before a normal sign-in. */
+const PUBLIC_ROUTES = ['/privacy', '/terms', '/reset-password']
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   // Gate on mount so persisted (localStorage) state can't cause a hydration
@@ -33,6 +35,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const inTrial = useEntitlement((s) => s.inTrial)
   const signedInEmail = useAuth((s) => s.email)
   const localOnly = useAuth((s) => s.localOnly)
+  const recovering = useAuth((s) => s.recovering)
   const authReady = useAuth((s) => s.initialized)
   const initAuth = useAuth((s) => s.init)
   const entitlementLoading = useEntitlement((s) => s.loading)
@@ -81,6 +84,19 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       <div className="mx-auto max-w-md min-h-full">
         <HomeSkeleton />
       </div>
+    )
+  }
+
+  // Password recovery takes priority over every other gate: a reset link establishes a temporary
+  // session (which would otherwise fall through to the app/paywall), so intercept it and force the
+  // "set a new password" screen until the password is updated (which clears `recovering`).
+  if (recovering) {
+    return (
+      <ErrorBoundary>
+        <div className="mx-auto max-w-md min-h-full">
+          <ResetPassword />
+        </div>
+      </ErrorBoundary>
     )
   }
 

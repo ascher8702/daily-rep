@@ -11,7 +11,7 @@ import { useConfirm } from '@/components/ConfirmProvider'
 import { SectionLabel } from '@/components/settings/ui'
 import { BoltMark } from '@/components/billing/shared'
 import {
-  SlidersIcon, CalendarIcon, ShieldCheckIcon, MoonIcon, DownloadIcon, RefreshIcon, LockIcon, ChevronRight,
+  SlidersIcon, CalendarIcon, ShieldCheckIcon, MoonIcon, DownloadIcon, RefreshIcon, LockIcon, KeyIcon, ChevronRight,
 } from '@/components/icons'
 
 function HubRow({
@@ -133,6 +133,9 @@ export default function SettingsPage() {
       <SectionLabel className="mt-[22px] mb-2.5">Account</SectionLabel>
       <Group>
         <HubRow icon={<ShieldCheckIcon size={17} strokeWidth={1.9} />} tint="lime" title="Membership" sub={memberSub} badge={memberBadge} onClick={() => router.push('/settings/membership')} />
+        {authEmail && (
+          <HubRow icon={<KeyIcon size={17} strokeWidth={1.9} />} title="Sign-in & security" sub="Email & password" onClick={() => router.push('/settings/account')} />
+        )}
         <HubRow icon={<MoonIcon size={17} strokeWidth={1.9} />} title="Profile & appearance" sub="Name, body metrics, theme" onClick={() => router.push('/settings/profile')} last />
       </Group>
 

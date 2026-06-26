@@ -22,8 +22,27 @@ export interface AuthState {
   initialized: boolean
   /** a non-error notice to show (e.g. "check your email to confirm") */
   pending: string | null
+  /** a password-recovery session is active (the user followed a reset-password link). While true the
+   *  app routes to the "set a new password" screen instead of the normal signed-in experience. */
+  recovering: boolean
   signUp: (email: string, password: string, captchaToken?: string) => Promise<string | null>
   signIn: (email: string, password: string, captchaToken?: string) => Promise<string | null>
+  /** Send a password-reset email. Always resolves with null on a well-formed request (Supabase does not
+   *  reveal whether the address exists, to prevent account enumeration); the UI shows a generic notice. */
+  resetPassword: (email: string, captchaToken?: string) => Promise<string | null>
+  /** Change the account email. Supabase emails a confirmation link to the new (and old) address; the
+   *  change only applies once confirmed, so the UI tells the user to check their inbox. */
+  updateEmail: (newEmail: string) => Promise<string | null>
+  /** Set a new password for the current session — used both by the recovery flow and from Settings. */
+  updatePassword: (newPassword: string) => Promise<string | null>
+  /** OAuth sign-in (Google / Apple). On success the browser redirects to the provider and the
+   *  function never really "returns" (the page navigates away); it resolves with an error message
+   *  only when the redirect couldn't be started (e.g. the provider isn't enabled in Supabase). */
+  signInWithProvider: (provider: 'google' | 'apple') => Promise<string | null>
+  /** Passwordless sign-in: email the user a one-time magic link (Supabase `signInWithOtp`). On success
+   *  no session exists yet — it lands when they open the link — so `pending` is set to a "check your
+   *  email" notice. Resolves with an error message only when the email couldn't be sent. */
+  signInWithMagicLink: (email: string, captchaToken?: string) => Promise<string | null>
   signOut: () => Promise<void>
   /** permanently delete the account + ALL cloud data (GDPR erasure), then tear down local state.
    *  Returns an error message on failure, or null on success. */
@@ -38,6 +57,7 @@ export const useAuth = create<AuthState>((set) => ({
   localOnly: false,
   initialized: false,
   pending: null,
+  recovering: false,
 
   init: () => {
     if (bootstrapped) return
@@ -58,13 +78,17 @@ export const useAuth = create<AuthState>((set) => ({
       if (u) void startSync(u.id)
     })
 
-    supabase.auth.onAuthStateChange((_event, session) => {
+    supabase.auth.onAuthStateChange((event, session) => {
       const u = session?.user
       set({ email: u?.email ?? null })
+      // A reset-password link signs the user into a temporary recovery session and fires this event;
+      // flag it so the gate shows the "set a new password" screen until the password is updated.
+      if (event === 'PASSWORD_RECOVERY') set({ recovering: true })
       if (u) {
         set({ pending: null })
         void startSync(u.id)
       } else {
+        set({ recovering: false })
         void stopSync()
       }
     })
@@ -104,6 +128,79 @@ export const useAuth = create<AuthState>((set) => ({
     return null
   },
 
+  signInWithProvider: async (provider) => {
+    if (!supabase) return 'Cloud sync is not configured'
+    // PKCE flow: signInWithOAuth redirects the browser to the provider, which returns to `redirectTo`
+    // with a `?code=` that supabase-js auto-exchanges on load (detectSessionInUrl) → onAuthStateChange
+    // wires email + sync, exactly like password sign-in. `redirectTo` MUST be in Supabase's allowed
+    // Redirect URLs. On error (e.g. the provider isn't enabled yet) no redirect happens and we surface it.
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider,
+      options: {
+        redirectTo: typeof window !== 'undefined' ? window.location.origin : undefined,
+      },
+    })
+    if (error) return error.message
+    return null
+  },
+
+  signInWithMagicLink: async (rawEmail, captchaToken) => {
+    const email = normalizeEmail(rawEmail)
+    if (!emailValid(email)) return 'Enter a valid email address'
+    if (!supabase) return 'Cloud sync is not configured'
+    // The link returns to the app origin, where detectSessionInUrl exchanges it for a session
+    // (→ onAuthStateChange wires email + sync), exactly like the OAuth flow.
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: {
+        emailRedirectTo: typeof window !== 'undefined' ? window.location.origin : undefined,
+        captchaToken,
+      },
+    })
+    if (error) return error.message
+    set({ pending: 'Check your email for a sign-in link to finish signing in.' })
+    return null
+  },
+
+  resetPassword: async (rawEmail, captchaToken) => {
+    const email = normalizeEmail(rawEmail)
+    if (!emailValid(email)) return 'Enter a valid email address'
+    if (!supabase) return 'Cloud sync is not configured'
+    // The link returns to /reset-password (must be in Supabase's allowed Redirect URLs), where the
+    // recovery session is detected and the "set a new password" screen is shown.
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: typeof window !== 'undefined' ? `${window.location.origin}/reset-password` : undefined,
+      captchaToken,
+    })
+    if (error) return error.message
+    return null
+  },
+
+  updateEmail: async (rawEmail) => {
+    if (!supabase) return 'Cloud sync is not configured'
+    const email = normalizeEmail(rawEmail)
+    if (!emailValid(email)) return 'Enter a valid email address'
+    // Supabase emails a confirmation link to the new (and old) address; onAuthStateChange updates the
+    // local email only after the link is followed, so the caller prompts the user to check their inbox.
+    const { error } = await supabase.auth.updateUser(
+      { email },
+      { emailRedirectTo: typeof window !== 'undefined' ? window.location.origin : undefined },
+    )
+    if (error) return error.message
+    return null
+  },
+
+  updatePassword: async (newPassword) => {
+    if (!supabase) return 'Cloud sync is not configured'
+    const issue = passwordIssue(newPassword)
+    if (issue) return issue
+    const { error } = await supabase.auth.updateUser({ password: newPassword })
+    if (error) return error.message
+    // password set — leave any recovery session and continue as a normally signed-in user
+    set({ recovering: false })
+    return null
+  },
+
   signOut: async () => {
     // never leave the user stuck "signed in" on a network error — always tear down local session state
     try {
@@ -114,7 +211,7 @@ export const useAuth = create<AuthState>((set) => ({
     }
     await stopSync()
     // back to the sign-in screen (account required — no local fallback for a configured build)
-    set({ email: null, localOnly: false })
+    set({ email: null, localOnly: false, recovering: false })
   },
 
   deleteAccount: async () => {
@@ -139,7 +236,7 @@ export const useAuth = create<AuthState>((set) => ({
       /* the user no longer exists server-side; clearing the local session is enough */
     }
     useStore.getState().resetAll()
-    set({ email: null, localOnly: false, pending: null })
+    set({ email: null, localOnly: false, pending: null, recovering: false })
     return null
   },
 }))

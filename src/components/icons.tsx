@@ -36,6 +36,8 @@ import {
   Clock,
   SlidersHorizontal,
   CalendarDays,
+  Mail,
+  KeyRound,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -87,3 +89,5 @@ export const CardIcon = icon(CreditCard)
 export const ClockIcon = icon(Clock)
 export const SlidersIcon = icon(SlidersHorizontal)
 export const CalendarIcon = icon(CalendarDays)
+export const MailIcon = icon(Mail)
+export const KeyIcon = icon(KeyRound)
