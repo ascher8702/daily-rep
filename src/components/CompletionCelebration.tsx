@@ -31,7 +31,7 @@ const COLORS = [
  * haptic. Fires exactly once on mount; renders nothing (and skips the burst) under prefers-reduced-
  * motion, but still plays the (brief) chime/haptic. Mount it only on a FRESH completion.
  */
-export default function CompletionCelebration({ count = 80 }: { count?: number }) {
+export default function CompletionCelebration({ count = 80, sound = true }: { count?: number; sound?: boolean }) {
   const fired = useRef(false)
   const [pieces, setPieces] = useState<Piece[]>([])
 
@@ -39,8 +39,11 @@ export default function CompletionCelebration({ count = 80 }: { count?: number }
     if (fired.current) return
     fired.current = true
 
-    playCompletionChime()
-    celebrationHaptic()
+    // chime + haptics are user-toggleable; the confetti is purely visual (governed by reduced-motion)
+    if (sound) {
+      playCompletionChime()
+      celebrationHaptic()
+    }
 
     const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches
     if (reduce) return
@@ -63,7 +66,7 @@ export default function CompletionCelebration({ count = 80 }: { count?: number }
     const longest = Math.max(...arr.map((p) => p.dur + p.delay))
     const t = setTimeout(() => setPieces([]), longest + 200)
     return () => clearTimeout(t)
-  }, [count])
+  }, [count, sound])
 
   if (!pieces.length) return null
 

@@ -1515,6 +1515,13 @@ describe('mergePersisted — profile numeric sanitization (corrupt-blob hardenin
   const merge = (patch: Record<string, unknown>) =>
     mergePersisted({ profile: { ...cur().profile, ...patch } }, cur()).profile
 
+  it('preserves the effects (sound & haptics) preference through update + hydration', () => {
+    useStore.getState().updateProfile({ effects: false })
+    expect(useStore.getState().profile.effects).toBe(false)
+    expect(merge({ effects: false }).effects).toBe(false)
+    expect(merge({ effects: true }).effects).toBe(true)
+  })
+
   it('rejects NaN/Infinity/non-number bodyweight & restSeconds to undefined (→ safe defaults downstream)', () => {
     expect(merge({ bodyweight: NaN }).bodyweight).toBeUndefined()
     expect(merge({ bodyweight: Infinity }).bodyweight).toBeUndefined()

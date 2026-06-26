@@ -76,7 +76,9 @@ function SummaryInner() {
 
   return (
     <div className="min-h-screen flex flex-col animate-fade-in pb-28">
-      {justCompleted && <CompletionCelebration count={summary.prs.length > 0 ? 120 : 80} />}
+      {justCompleted && (
+        <CompletionCelebration count={summary.prs.length > 0 ? 120 : 80} sound={profile.effects ?? true} />
+      )}
       <main className="flex-1 px-5 pt-10 safe-top">
         {/* celebratory hero */}
         <div className="flex flex-col items-center text-center">

@@ -171,8 +171,10 @@ export interface Profile {
   trialWelcomeSeen?: boolean
   /** color theme preference (defaults to 'system') */
   theme?: Theme
-  /** accent color id (defaults to 'orange'); drives the whole brand ramp — see lib/theme */
+  /** accent color id (defaults to 'blaze'); drives the whole brand ramp — see lib/theme */
   accent?: string
+  /** play the completion chime + success haptics (defaults to true when unset) */
+  effects?: boolean
 }
 
 /** A snapshot value 0..100 of how fatigued a muscle is (100 = fully fatigued) */

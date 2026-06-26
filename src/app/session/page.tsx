@@ -121,7 +121,7 @@ function SessionView() {
 
   const onFinish = async () => {
     // prime audio inside the tap gesture so the completion chime can play on the summary screen (iOS)
-    unlockAudio()
+    if (profile.effects ?? true) unlockAudio()
     // only a completed WORKING set counts — finishWorkout discards a warm-up-only session,
     // so the confirm copy must match (don't promise to "save" what will be discarded)
     const anyDone = current.exercises.some((we) => we.sets.some((s) => s.done && !s.warmup))

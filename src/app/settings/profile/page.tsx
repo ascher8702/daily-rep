@@ -87,6 +87,29 @@ export default function ProfileAppearancePage() {
               )
             })}
           </div>
+
+          <div className="mt-4 flex items-center justify-between">
+            <div>
+              <div className="text-xs font-semibold text-fg/55">Sound &amp; haptics</div>
+              <div className="text-[11px] text-fg/40 mt-0.5">Chime and buzz when you finish a workout.</div>
+            </div>
+            {(() => {
+              const on = profile.effects ?? true
+              return (
+                <button
+                  role="switch"
+                  aria-checked={on}
+                  aria-label="Sound and haptics"
+                  onClick={() => updateProfile({ effects: !on })}
+                  className={`relative h-7 w-12 shrink-0 rounded-full transition ${on ? 'bg-blaze' : 'bg-raised border border-hairline/15'}`}
+                >
+                  <span
+                    className={`absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-transform ${on ? 'translate-x-[1.375rem]' : 'translate-x-0.5'}`}
+                  />
+                </button>
+              )
+            })()}
+          </div>
         </div>
       </div>
     </div>
