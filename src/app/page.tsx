@@ -18,6 +18,7 @@ import { RecoveryRing } from '@/components/ui/RecoveryRing'
 import { RecoveryBar } from '@/components/ui/RecoveryBar'
 import { StatTile } from '@/components/ui/StatTile'
 import { useConfirm } from '@/components/ConfirmProvider'
+import SwitchWorkoutSheet from '@/components/SwitchWorkoutSheet'
 import TrialBanner from '@/components/TrialBanner'
 import { PlayIcon, PlusIcon, RefreshIcon, FlameIcon, TargetIcon, ChevronRight } from '@/components/icons'
 
@@ -49,8 +50,11 @@ export default function HomeScreen() {
   const activePlan = useStore((s) => s.activePlan)
   const customPlans = useStore((s) => s.customPlans)
   const generateFromPlan = useStore((s) => s.generateFromPlan)
+  const generateFromPlanDay = useStore((s) => s.generateFromPlanDay)
   const skipPlanDay = useStore((s) => s.skipPlanDay)
   const startWorkout = useStore((s) => s.startWorkout)
+
+  const [switchOpen, setSwitchOpen] = useState(false)
 
   const now = Date.now()
   // a stable timestamp for previewing a generated session, so the plan hero's fallback preview
@@ -250,6 +254,27 @@ export default function HomeScreen() {
     router.push('/session')
   }
 
+  /** Build a chosen plan-schedule day (from the Switch picker) and open it, confirming a replace if
+   *  there's logged work to lose. Lands on the planned session so the user can review then Start. */
+  const switchToPlanDay = async (dayIndex: number) => {
+    if (current) {
+      const hasLogged =
+        current.status === 'active' || current.exercises.some((we) => we.sets.some((s) => s.done))
+      if (
+        hasLogged &&
+        !(await confirm({
+          title: 'Replace workout?',
+          body: 'Your in-progress workout will be replaced with this plan day. Logged sets will be lost.',
+          confirmLabel: 'Replace',
+          tone: 'danger',
+        }))
+      )
+        return
+    }
+    generateFromPlanDay(dayIndex)
+    router.push('/session')
+  }
+
   /** Resume an active session, or START a built-but-not-yet-started one (timer running). */
   const openCurrent = () => {
     if (current && current.status !== 'active') startWorkout()
@@ -296,7 +321,7 @@ export default function HomeScreen() {
                 : undefined
             }
             chips={heroChips}
-            onSwitch={() => buildAndGo()}
+            onSwitch={() => setSwitchOpen(true)}
             exercises={sessionExercises}
             extraCount={Math.max(0, current.exercises.length - 4)}
             onExerciseClick={() => router.push('/session')}
@@ -344,6 +369,7 @@ export default function HomeScreen() {
                 : undefined
             }
             chips={heroChips}
+            onSwitch={() => setSwitchOpen(true)}
             exercises={planExercises}
             extraCount={Math.max(0, planPreview.length - 4)}
             description={
@@ -371,6 +397,8 @@ export default function HomeScreen() {
             eyebrow="Today's Workout"
             title="Ready when you are"
             chips={heroChips}
+            onSwitch={() => setSwitchOpen(true)}
+            switchLabel="Options"
             description="We'll build a fresh session around how recovered each muscle is — targeting what's ready and resting what isn't."
             cta={{ label: "Build today's workout", onClick: () => buildAndGo(), icon: <PlusIcon size={18} /> }}
           />
@@ -477,6 +505,16 @@ export default function HomeScreen() {
           </button>
         )}
       </div>
+
+      <SwitchWorkoutSheet
+        open={switchOpen}
+        onClose={() => setSwitchOpen(false)}
+        fresh={fresh}
+        onPickPlanDay={switchToPlanDay}
+        onNewWorkout={() => buildAndGo()}
+        onPickSaved={() => router.push('/history')}
+        onPickMuscles={(muscles) => buildAndGo(muscles)}
+      />
     </div>
   )
 }

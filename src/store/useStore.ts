@@ -94,6 +94,8 @@ export interface AppState {
   startPlan: (planId: string, restart?: boolean) => void
   stopPlan: () => void
   generateFromPlan: (shuffle?: number) => void
+  /** jump the active plan to a specific schedule day and build it (used by Home's "Switch" picker) */
+  generateFromPlanDay: (dayIndex: number) => void
   skipPlanDay: () => void
 
   // ---- custom plans ----
@@ -914,6 +916,26 @@ export const useStore = create<AppState>()(
         w.planId = plan.id
         w.planDayLabel = day.label
         set({ current: w, restEndsAt: null, restDuration: 0 })
+      },
+
+      generateFromPlanDay: (dayIndex) => {
+        const { activePlan, customPlans } = get()
+        if (!activePlan) return
+        const plan = resolvePlan(activePlan.planId, customPlans)
+        if (!plan) return
+        const len = plan.schedule.length
+        // point the plan at the chosen day (normalize into range), record progress, then build it —
+        // generateFromPlan reads activePlan.dayIndex, so set it first within this action
+        const di = ((dayIndex % len) + len) % len
+        set((s) =>
+          s.activePlan
+            ? {
+                activePlan: { ...s.activePlan, dayIndex: di },
+                planProgress: { ...s.planProgress, [s.activePlan.planId]: di },
+              }
+            : {},
+        )
+        get().generateFromPlan()
       },
 
       addCustomPlan: (plan) =>
