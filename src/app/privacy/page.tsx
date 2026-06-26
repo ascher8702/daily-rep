@@ -76,6 +76,12 @@ export default function PrivacyPolicyPage() {
         account), we remove your cloud data and your account. Local on-device data is cleared when you sign
         out or reset the app.
       </p>
+      <p>
+        To prevent repeated abuse of the free trial, we retain a minimal record of which email addresses
+        have already started a trial (a normalized form of the address) on a lawful-basis of our legitimate
+        interest in preventing fraud. This record is kept after account deletion solely for that purpose and
+        is not used to contact you or for any other use.
+      </p>
 
       <h2>Your rights</h2>
       <ul>

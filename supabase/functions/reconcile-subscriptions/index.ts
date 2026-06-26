@@ -61,6 +61,12 @@ Deno.serve(async (req) => {
     return new Response('query failed', { status: 500 })
   }
 
+  // Saturation signal: if we hit the batch ceiling there may be more stale rows than one run drains
+  // (next run, ≤6h later, picks up the rest). Surface it so ops can raise the cadence/limit if needed.
+  if ((rows?.length ?? 0) >= BATCH_LIMIT) {
+    console.warn('[reconcile] candidate batch hit BATCH_LIMIT — possible backlog', { limit: BATCH_LIMIT })
+  }
+
   const stale = (rows ?? []).filter((r) => needsReconcile(r, now))
   let synced = 0
   let failed = 0

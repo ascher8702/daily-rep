@@ -170,6 +170,11 @@ so deleting the auth user also drops the blob. **The only recovery is PITR** (§
 the deletion — another reason PITR is launch-blocking. Do NOT attempt to "recreate" the user with the
 same email to recover; that produces a new `auth.users.id` and the old rows won't reattach.
 
+> **Intentionally retained on erasure:** `public.trial_ledger` (a normalized-email anti-trial-abuse
+> marker) is NOT removed by `purge_user_data` and has no FK to `auth.users`, so it survives deletion by
+> design — otherwise a user could delete + re-register to farm a fresh free trial. Retained on the
+> legitimate-interest (fraud-prevention) basis disclosed in the Privacy Policy; not used for contact.
+
 ---
 
 ## 6. Post-restore verification checklist

@@ -48,11 +48,13 @@ alter table public.trial_ledger enable row level security;
 revoke all on table public.trial_ledger from anon, authenticated;
 
 -- Re-provision the signup trigger to grant the trial only on the FIRST claim per normalized email.
+-- search_path = '' (NOT 'public') to preserve the hardening from 20260625001352 — every object below is
+-- already fully schema-qualified, so this is behavior-identical and keeps advisor 0011 satisfied.
 create or replace function public.handle_new_user_subscription()
 returns trigger
 language plpgsql
 security definer
-set search_path = public
+set search_path = ''
 as $$
 declare
   v_norm  text := public.normalize_email(new.email);
@@ -73,6 +75,10 @@ begin
     end if;
   end if;
 
+  -- INVARIANT: entitlement is decided by (stripe_subscription_id, trial_ends_at, current_period_end),
+  -- NEVER by status alone. The repeat-claim row has status='trialing' but trial_ends_at=NULL and no sub,
+  -- which deriveEntitlement / is_active_subscriber both read as NOT entitled (→ paywall + write-blocked).
+  -- Do not add code that grants access on status='trialing' without also checking trial_ends_at.
   insert into public.subscriptions (user_id, status, trial_ends_at)
   values (new.id, 'trialing', v_trial)
   on conflict (user_id) do nothing;

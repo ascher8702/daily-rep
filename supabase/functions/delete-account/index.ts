@@ -7,6 +7,11 @@ import Stripe from 'https://esm.sh/stripe@17.7.0?target=deno'
 // user can only ever delete THEMSELVES (no IDOR). Before purging we best-effort cancel any live Stripe
 // subscription so a deleted account is never billed again (the subscriptions row itself is removed by
 // the ON DELETE CASCADE when the auth user is deleted).
+//
+// RETENTION CARVE-OUT: public.trial_ledger (a normalized-email anti-trial-abuse marker) is INTENTIONALLY
+// NOT erased — it has no FK to auth.users and purge_user_data does not touch it, so a deleted user can't
+// farm a fresh free trial by re-registering. Retained on the legitimate-interest (fraud-prevention)
+// basis disclosed in the Privacy Policy. It is not used for contact or any other purpose.
 const cors = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',

@@ -13,6 +13,9 @@
 -- NOTE: not yet applied to the shared prod project — apply via the dedicated-project cutover / db push.
 
 create extension if not exists pg_net;
+-- pg_cron is normally created by the analytics migrations; ensure it here too so this migration is
+-- self-sufficient on a fresh/dedicated project that doesn't replay the analytics history.
+create extension if not exists pg_cron;
 
 -- Idempotent (re)schedule: drop any prior job of this name, then create it. Runs every 6 hours (offset
 -- to avoid the top-of-hour analytics cron pile-up).

@@ -62,4 +62,4 @@ jobs:
         with:
           deno-version: v2.x
       - name: Deno tests
-        run: deno test --allow-none supabase/functions/
+        run: deno test supabase/functions/
