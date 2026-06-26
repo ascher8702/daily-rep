@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { supabase } from '../lib/supabase'
-import { startSync, stopSync } from '../lib/sync'
+import { startSync, stopSync, resetSyncClock } from '../lib/sync'
 import { emailValid, passwordIssue, normalizeEmail } from '../lib/auth'
 import { reportError } from '../lib/telemetry'
 import { useStore } from './useStore'
@@ -52,6 +52,18 @@ export interface AuthState {
 
 let bootstrapped = false
 
+/**
+ * Wipe this device's local data after a sign-out (the sync flush in stopSync() must have run first).
+ * Prevents the next account on a shared browser from inheriting the previous user's onboarding flags,
+ * trial-welcome state and workout history — and from having those defaults pushed over THEIR cloud row.
+ * Guarded on `supabase`: a local-only build has no cloud copy, so we must NOT wipe it.
+ */
+function clearLocalAfterSignOut() {
+  if (!supabase) return
+  useStore.getState().resetAll()
+  resetSyncClock()
+}
+
 export const useAuth = create<AuthState>((set) => ({
   email: null,
   localOnly: false,
@@ -89,7 +101,8 @@ export const useAuth = create<AuthState>((set) => ({
         void startSync(u.id)
       } else {
         set({ recovering: false })
-        void stopSync()
+        // flush THEN wipe local — so an expired/revoked session also clears state for the next user
+        void stopSync().then(clearLocalAfterSignOut)
       }
     })
   },
@@ -209,7 +222,8 @@ export const useAuth = create<AuthState>((set) => ({
       // ignore network/identity errors (we still clear the local session below), but surface it
       reportError(e, { scope: 'auth.signOut' })
     }
-    await stopSync()
+    await stopSync() // best-effort final flush of this user's data to the cloud…
+    clearLocalAfterSignOut() // …THEN wipe local so the next account can't inherit it
     // back to the sign-in screen (account required — no local fallback for a configured build)
     set({ email: null, localOnly: false, recovering: false })
   },

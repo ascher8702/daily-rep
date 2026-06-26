@@ -30,25 +30,40 @@ Deno.serve(async (req) => {
     const uid = user.id
     const admin = createClient(url, service)
 
-    // Best-effort: cancel any live Stripe subscription so we don't keep billing a deleted account.
-    try {
-      const stripeKey = Deno.env.get('STRIPE_SECRET_KEY')
-      if (stripeKey) {
-        const { data: subRow } = await admin
-          .from('subscriptions')
-          .select('stripe_subscription_id')
-          .eq('user_id', uid)
-          .maybeSingle()
-        if (subRow?.stripe_subscription_id) {
-          const stripe = new Stripe(stripeKey, {
-            apiVersion: '2024-06-20',
-            httpClient: Stripe.createFetchHttpClient(),
-          })
-          await stripe.subscriptions.cancel(subRow.stripe_subscription_id as string)
+    // Stop billing + erase PII at Stripe BEFORE the cascade destroys the only stripe id mapping.
+    // Deleting the Customer cancels all of its subscriptions AND removes the stored email/PII (Stripe
+    // retains invoices for tax/legal — permitted under GDPR Art.17(3)(b)). This covers a sub created at
+    // Checkout completion before the webhook wrote stripe_subscription_id (we resolve via the customer).
+    const stripeKey = Deno.env.get('STRIPE_SECRET_KEY')
+    if (stripeKey) {
+      const { data: subRow } = await admin
+        .from('subscriptions')
+        .select('stripe_customer_id, stripe_subscription_id')
+        .eq('user_id', uid)
+        .maybeSingle()
+      const customerId = (subRow?.stripe_customer_id as string | null) ?? null
+      const subId = (subRow?.stripe_subscription_id as string | null) ?? null
+      if (customerId || subId) {
+        const stripe = new Stripe(stripeKey, {
+          apiVersion: '2024-06-20',
+          httpClient: Stripe.createFetchHttpClient(),
+        })
+        try {
+          if (customerId) await stripe.customers.del(customerId) // cancels its subs + erases PII
+          else if (subId) await stripe.subscriptions.cancel(subId) // no customer on file → stop billing
+        } catch (e) {
+          // CRITICAL: never silently continue past a failed cancel — the row (and its stripe ids) is
+          // about to be cascade-deleted, so the webhook could never reconcile and the card would keep
+          // being charged. Persist the ids to a NON-cascade recovery table for retry/audit first.
+          console.error('[delete-account] stripe cleanup FAILED — queuing for retry', { customerId, subId, err: String(e) })
+          await admin
+            .from('pending_stripe_cleanup')
+            .insert({ stripe_customer_id: customerId, stripe_subscription_id: subId, reason: 'delete_account_cleanup_failed' })
+            .then(({ error }) => {
+              if (error) console.error('[delete-account] could not queue stripe cleanup', { customerId, subId, err: error.message })
+            })
         }
       }
-    } catch (e) {
-      console.warn('[delete-account] stripe cancel failed (continuing):', String(e))
     }
 
     const { error: pErr } = await admin.rpc('purge_user_data', { p_user: uid })

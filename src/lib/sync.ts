@@ -80,6 +80,19 @@ export function nextClock(prev: number, now: number): number {
   return Math.max(prev + 1, now)
 }
 
+/**
+ * Reset the local sync clock to 0 — call on SIGN-OUT (paired with useStore.resetAll()). Without this,
+ * the next user to sign in on this device could have an OLDER cloud `client_updated_at` than the
+ * lingering clock from the previous user, so pullAndReconcile would treat local as "newer" and push
+ * this device's reset-default state OVER their real cloud data. Zeroing the clock guarantees their
+ * cloud row is adopted instead.
+ */
+export function resetSyncClock(): void {
+  writeClock(0)
+  lastPushedJson = ''
+  lastPushAt = 0
+}
+
 /** The partialized state blob exactly as persisted to localStorage. */
 /** Parse the Zustand persist blob's `.state`, guarding it's a real (non-null, non-array) OBJECT before
  *  it's pushed as the cloud `data` — a corrupt blob whose `.state` is a string/array/null/garbage → null

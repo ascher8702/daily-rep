@@ -129,7 +129,11 @@ Deno.serve(async (req) => {
       }
       case 'customer.subscription.created':
       case 'customer.subscription.updated':
-      case 'customer.subscription.deleted': {
+      case 'customer.subscription.deleted':
+      // Fires ~3 days before a carried-over trial first charges. We sync to keep the row fresh; a
+      // pre-charge user notification (email / in-app banner) is a product follow-up that needs its own
+      // delivery infra, so it's intentionally not wired here yet.
+      case 'customer.subscription.trial_will_end': {
         const sub = event.data.object as Stripe.Subscription
         await syncSubscription(stripe, admin, sub.id, (sub.metadata?.user_id as string) || null)
         break
