@@ -48,6 +48,7 @@ export const PATTERN: Record<string, MovementPattern> = {
   'overhead-press': 'vertical-push',
   'db-shoulder-press': 'vertical-push',
   'pike-pushup': 'vertical-push',
+  'kb-clean-press': 'vertical-push',
   // horizontal pull
   'barbell-row': 'horizontal-pull',
   'db-row': 'horizontal-pull',
@@ -93,6 +94,7 @@ export const PATTERN: Record<string, MovementPattern> = {
   'hanging-leg-raise': 'core',
   'cable-crunch': 'core',
   'bicycle-crunch': 'core',
+  'turkish-get-up': 'core', // full-body, but its defining demand is trunk + shoulder stability
   'rowing-machine': 'cardio',
   burpee: 'cardio',
 }

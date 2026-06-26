@@ -14,7 +14,7 @@ import { effectiveLoad } from '../lib/stats'
  * re-muscled), these assertions drift — that is the signal to re-derive & re-seed exercise_facts
  * so the projection keeps matching the client. Keep DERIVED_FACTS_COUNT == the seeded row count.
  */
-const DERIVED_FACTS_COUNT = 53
+const DERIVED_FACTS_COUNT = 55
 
 type Region = 'push' | 'pull' | 'legs' | 'core'
 type Ex = (typeof EXERCISES)[number]

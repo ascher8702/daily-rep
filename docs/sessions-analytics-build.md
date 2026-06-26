@@ -80,7 +80,7 @@ matviews surfaced only via K-anonymized SECURITY DEFINER RPCs. All SECURITY DEFI
   fallback. tsc clean; store regression test asserts the runtime stamp + format; live app renders, no new
   console errors.
 - [x] **Stage 7 — tests + advisors**: `src/__tests__/analytics-facts.test.ts` locks the
-  `exercise_facts`↔`stats.ts` contract (count==53; `is_bodyweight_lift` probed non-circularly via the real
+  `exercise_facts`↔`stats.ts` contract (count==55; `is_bodyweight_lift` probed non-circularly via the real
   `effectiveLoad`; regions deduped subset of {push,pull,legs,core}; pushup/bench/deadlift anchors). RLS
   isolation verified live (different uid → 0 rows, own cohort number NULL). `get_advisors(security)` clean
   apart from the intentional `my_volume_percentile` definer WARN (by design) + pre-existing leaked-password

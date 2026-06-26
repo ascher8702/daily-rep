@@ -2049,6 +2049,235 @@ export const PLANS: WorkoutPlan[] = [
       },
     ],
   },
+  // ---------------------------------------------------------------------------
+  // Minimalist / time-efficient (barbell)
+  // ---------------------------------------------------------------------------
+  {
+    id: 'easy-strength',
+    name: 'Dan John Easy Strength',
+    tagline: 'Minimalist “rule of ten” — strength without the grind',
+    description:
+      'Five lifts, roughly ten reps each, most days of the week — kept deliberately submaximal so you never miss a rep. Loads inch up over weeks while sessions stay short (20–30 min). The two days alternate the rep scheme: straight 2x5 on A, a 5/3/2 wave with singles on B. A potent option when life is busy or you want to stay strong while focusing energy elsewhere.',
+    daysPerWeek: 5,
+    daysPerWeekOptions: [3, 4, 5],
+    goalFit: ['strength', 'general'],
+    level: 'intermediate',
+    equipment: 'Full gym',
+    equipmentContext: 'full-gym',
+    author: 'Dan John',
+    evidenceTier: 'well-established',
+    source: 'https://danjohnuniversity.com/essays/even-easier-strength',
+    schedule: [
+      {
+        label: 'A',
+        title: 'Easy Strength · 2×5',
+        focus: ['lowerback', 'hamstrings', 'glutes', 'chest', 'quads', 'back', 'abs'],
+        goal: 'strength',
+        lifts: [
+          { exerciseId: 'deadlift', sets: 2, repMin: 5, repMax: 5, note: 'submaximal — leave 3+ in the tank' },
+          { exerciseId: 'barbell-bench-press', sets: 2, repMin: 5, repMax: 5, note: 'never grind' },
+          { exerciseId: 'front-squat', sets: 2, repMin: 5, repMax: 5 },
+          { exerciseId: 'pullup', sets: 2, repMin: 5, repMax: 5, note: 'add load if easy' },
+          { exerciseId: 'hanging-leg-raise', sets: 2, repMin: 5, repMax: 8, note: 'core' },
+        ],
+      },
+      {
+        label: 'B',
+        title: 'Easy Strength · 5/3/2 + singles',
+        focus: ['lowerback', 'hamstrings', 'glutes', 'chest', 'quads', 'back', 'abs'],
+        goal: 'strength',
+        lifts: [
+          { exerciseId: 'deadlift', sets: 3, repMin: 2, repMax: 5, note: '5/3/2 ramp; stop shy of a grind' },
+          { exerciseId: 'barbell-bench-press', sets: 3, repMin: 2, repMax: 5, note: '5/3/2 ramp' },
+          { exerciseId: 'front-squat', sets: 3, repMin: 2, repMax: 5, note: '5/3/2 ramp' },
+          { exerciseId: 'chinup', sets: 3, repMin: 2, repMax: 5, note: 'load to keep it submaximal' },
+          { exerciseId: 'hanging-leg-raise', sets: 2, repMin: 8, repMax: 10, note: 'core' },
+        ],
+      },
+    ],
+  },
+  // ---------------------------------------------------------------------------
+  // Dumbbell-only (intermediate)
+  // ---------------------------------------------------------------------------
+  {
+    id: 'db-upper-lower',
+    name: 'Dumbbell Upper/Lower',
+    tagline: 'Four-day dumbbell-only split — no barbell needed',
+    description:
+      'A complete intermediate upper/lower split built entirely from dumbbells and a bench, so it runs in a home gym or a crowded commercial floor. Each muscle is trained twice a week across two upper and two lower days, blending pressing, rowing and single-leg work with double progression — add reps to the top of the range, then add load.',
+    daysPerWeek: 4,
+    daysPerWeekOptions: [4],
+    goalFit: ['hypertrophy', 'strength'],
+    level: 'intermediate',
+    equipment: 'Minimal',
+    equipmentContext: 'home-dumbbell',
+    author: 'Daily Rep coaching team',
+    evidenceTier: 'popular-reasonable',
+    schedule: [
+      {
+        label: 'UA',
+        title: 'Upper A (Dumbbell)',
+        focus: ['chest', 'back', 'shoulders', 'biceps', 'triceps'],
+        goal: 'hypertrophy',
+        lifts: [
+          { exerciseId: 'db-bench-press', sets: 4, repMin: 6, repMax: 10 },
+          { exerciseId: 'db-row', sets: 4, repMin: 8, repMax: 12, note: 'each arm' },
+          { exerciseId: 'db-shoulder-press', sets: 3, repMin: 8, repMax: 12 },
+          { exerciseId: 'incline-db-press', sets: 3, repMin: 10, repMax: 12 },
+          { exerciseId: 'db-curl', sets: 3, repMin: 10, repMax: 12 },
+          { exerciseId: 'overhead-triceps', sets: 3, repMin: 10, repMax: 15 },
+        ],
+      },
+      {
+        label: 'LA',
+        title: 'Lower A (Dumbbell)',
+        focus: ['quads', 'glutes', 'hamstrings', 'calves', 'abs'],
+        goal: 'hypertrophy',
+        lifts: [
+          { exerciseId: 'goblet-squat', sets: 4, repMin: 8, repMax: 12 },
+          { exerciseId: 'romanian-deadlift', sets: 4, repMin: 8, repMax: 12, note: 'dumbbells' },
+          { exerciseId: 'bulgarian-split-squat', sets: 3, repMin: 8, repMax: 12, note: 'each leg' },
+          { exerciseId: 'standing-calf-raise', sets: 4, repMin: 10, repMax: 15 },
+          { exerciseId: 'plank', sets: 3, repMin: 8, repMax: 12, note: 'core, 30–45s holds' },
+        ],
+      },
+      {
+        label: 'UB',
+        title: 'Upper B (Dumbbell)',
+        focus: ['shoulders', 'back', 'chest', 'triceps', 'biceps'],
+        goal: 'hypertrophy',
+        lifts: [
+          { exerciseId: 'db-shoulder-press', sets: 4, repMin: 6, repMax: 10 },
+          { exerciseId: 'incline-db-press', sets: 4, repMin: 8, repMax: 12 },
+          { exerciseId: 'db-row', sets: 4, repMin: 10, repMax: 12, note: 'each arm' },
+          { exerciseId: 'lateral-raise', sets: 3, repMin: 12, repMax: 20 },
+          { exerciseId: 'rear-delt-fly', sets: 3, repMin: 12, repMax: 20 },
+          { exerciseId: 'hammer-curl', sets: 3, repMin: 10, repMax: 12 },
+        ],
+      },
+      {
+        label: 'LB',
+        title: 'Lower B (Dumbbell)',
+        focus: ['hamstrings', 'glutes', 'quads', 'calves', 'abs'],
+        goal: 'hypertrophy',
+        lifts: [
+          { exerciseId: 'romanian-deadlift', sets: 4, repMin: 8, repMax: 12, note: 'dumbbells' },
+          { exerciseId: 'lunge', sets: 3, repMin: 10, repMax: 12, note: 'each leg; walking or reverse' },
+          { exerciseId: 'goblet-squat', sets: 3, repMin: 12, repMax: 15 },
+          { exerciseId: 'glute-bridge', sets: 3, repMin: 12, repMax: 20, note: 'dumbbell on hips' },
+          { exerciseId: 'standing-calf-raise', sets: 4, repMin: 12, repMax: 20 },
+        ],
+      },
+    ],
+  },
+  // ---------------------------------------------------------------------------
+  // Calisthenics (intermediate bodyweight)
+  // ---------------------------------------------------------------------------
+  {
+    id: 'calisthenics-rr',
+    name: 'Calisthenics Strength Routine',
+    tagline: 'Intermediate bodyweight — pull-up bar, no weights',
+    description:
+      'A full-body bodyweight routine for lifters past the beginner stage, built around the big calisthenics patterns: pull-ups, dips, pike push-ups toward handstands, and split squats toward pistols. Run it three days a week and progress by adding reps, then advancing to a harder variation. Needs only a pull-up bar and somewhere to dip.',
+    daysPerWeek: 3,
+    daysPerWeekOptions: [3, 4],
+    goalFit: ['general', 'hypertrophy', 'strength'],
+    level: 'intermediate',
+    equipment: 'Bodyweight',
+    equipmentContext: 'bodyweight',
+    author: 'Daily Rep coaching team',
+    evidenceTier: 'popular-reasonable',
+    source: 'https://thefitness.wiki/routines/r-bodyweightfitness-recommended-routine/',
+    schedule: [
+      {
+        label: 'A',
+        title: 'Calisthenics A',
+        focus: ['back', 'lats', 'chest', 'shoulders', 'quads', 'glutes', 'abs'],
+        goal: 'hypertrophy',
+        lifts: [
+          { exerciseId: 'pullup', sets: 3, repMin: 5, repMax: 8, note: 'add reps, then weight or a harder variation' },
+          { exerciseId: 'dips', sets: 3, repMin: 5, repMax: 10 },
+          { exerciseId: 'bulgarian-split-squat', sets: 3, repMin: 8, repMax: 12, note: 'each leg; progress toward pistol' },
+          { exerciseId: 'pike-pushup', sets: 3, repMin: 6, repMax: 10, note: 'handstand progression' },
+          { exerciseId: 'inverted-row', sets: 3, repMin: 8, repMax: 12, note: 'feet elevated to scale up' },
+          { exerciseId: 'hanging-leg-raise', sets: 3, repMin: 6, repMax: 12, note: 'core' },
+        ],
+      },
+      {
+        label: 'B',
+        title: 'Calisthenics B',
+        focus: ['back', 'lats', 'chest', 'shoulders', 'quads', 'glutes', 'abs'],
+        goal: 'hypertrophy',
+        lifts: [
+          { exerciseId: 'chinup', sets: 3, repMin: 5, repMax: 8 },
+          { exerciseId: 'pushup', sets: 3, repMin: 8, repMax: 15, note: 'elevate feet or add a pause to scale up' },
+          { exerciseId: 'lunge', sets: 3, repMin: 10, repMax: 15, note: 'each leg' },
+          { exerciseId: 'inverted-row', sets: 3, repMin: 8, repMax: 12 },
+          { exerciseId: 'pike-pushup', sets: 3, repMin: 6, repMax: 10 },
+          { exerciseId: 'plank', sets: 3, repMin: 8, repMax: 12, note: 'core, 30–60s holds' },
+        ],
+      },
+    ],
+  },
+  // ---------------------------------------------------------------------------
+  // Kettlebell (minimalist GPP)
+  // ---------------------------------------------------------------------------
+  {
+    id: 'kb-simple-sinister',
+    name: 'Kettlebell Simple & Sinister',
+    tagline: 'Two lifts, one bell — a daily strength + conditioning base',
+    description:
+      'Pavel Tsatsouline’s minimalist standard: 100 one-arm swings and 10 Turkish get-ups with a single kettlebell, done most days in about 30 minutes. The swings build a powerful posterior chain and conditioning; the get-ups forge shoulder and core stability. Endlessly repeatable general-prep — pick a bell you can own with clean technique and grease the groove.',
+    daysPerWeek: 5,
+    daysPerWeekOptions: [4, 5, 6],
+    goalFit: ['general', 'endurance', 'strength'],
+    level: 'all',
+    equipment: 'Minimal',
+    equipmentContext: 'home-dumbbell',
+    author: 'Pavel Tsatsouline / StrongFirst',
+    evidenceTier: 'well-established',
+    source: 'https://www.strongfirst.com/achieve/sinister/',
+    schedule: [
+      {
+        label: 'S&S',
+        title: 'Swings + Get-Ups',
+        focus: ['glutes', 'hamstrings', 'lowerback', 'shoulders', 'abs'],
+        goal: 'general',
+        lifts: [
+          { exerciseId: 'kb-swing', sets: 10, repMin: 10, repMax: 10, note: '100 one-arm swings — 10×10, swap hands each set' },
+          { exerciseId: 'turkish-get-up', sets: 10, repMin: 1, repMax: 1, note: '10 get-ups — 5 per side, one rep per set' },
+        ],
+      },
+    ],
+  },
+  {
+    id: 'kb-the-giant',
+    name: 'The Giant (Kettlebell C&P)',
+    tagline: 'Density clean & press — size and conditioning in 20–30 min',
+    description:
+      'Geoff Neupert’s kettlebell program built on essentially one lift: the double (or single) clean & press. Using your 10-rep-max, you set a timer for 20–30 minutes and accumulate as many quality sets as possible, adding a set each week. Three sessions a week drive strength, muscle in the shoulders and upper back, and a serious conditioning effect — all from one pair of bells.',
+    daysPerWeek: 3,
+    daysPerWeekOptions: [3],
+    goalFit: ['hypertrophy', 'strength', 'general'],
+    level: 'intermediate',
+    equipment: 'Minimal',
+    equipmentContext: 'home-dumbbell',
+    author: 'Geoff Neupert',
+    evidenceTier: 'popular-reasonable',
+    source: 'https://www.strongfirst.com/community/threads/geoff-neupert-the-giant.17985/',
+    schedule: [
+      {
+        label: 'Giant',
+        title: 'Clean & Press Density',
+        focus: ['shoulders', 'triceps', 'traps', 'glutes', 'abs'],
+        goal: 'hypertrophy',
+        lifts: [
+          { exerciseId: 'kb-clean-press', sets: 10, repMin: 5, repMax: 10, note: 'use your 10RM; AMSAP in 20–30 min, +1 set/week' },
+          { exerciseId: 'kb-swing', sets: 5, repMin: 10, repMax: 20, note: 'optional finisher for conditioning' },
+        ],
+      },
+    ],
+  },
 ]
 
 export const PLAN_BY_ID: Record<string, WorkoutPlan> = Object.fromEntries(

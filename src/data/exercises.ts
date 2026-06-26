@@ -396,6 +396,28 @@ export const EXERCISES: Exercise[] = [
     difficulty: 2,
     instructions: ['Hinge and hike the bell back.', 'Snap hips to float it up.', 'Let it swing back down.'],
   },
+  {
+    id: 'kb-clean-press',
+    name: 'Kettlebell Clean & Press',
+    category: 'compound',
+    equipment: ['kettlebell'],
+    primary: ['shoulders'],
+    secondary: ['triceps', 'traps', 'glutes', 'abs'],
+    difficulty: 2,
+    unilateral: true,
+    instructions: ['Clean the bell to the rack.', 'Brace and press overhead.', 'Lower to rack, then to the hang.'],
+  },
+  {
+    id: 'turkish-get-up',
+    name: 'Turkish Get-Up',
+    category: 'compound',
+    equipment: ['kettlebell', 'dumbbell'],
+    primary: ['shoulders', 'abs'],
+    secondary: ['glutes', 'quads', 'traps'],
+    difficulty: 3,
+    unilateral: true,
+    instructions: ['Press the bell up, eyes on it.', 'Stand up through roll, lunge.', 'Reverse the steps to the floor.'],
+  },
 
   // ---------------- CALVES ----------------
   {
