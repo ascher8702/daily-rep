@@ -52,6 +52,13 @@ describe('installGlobalErrorHandlers', () => {
     cleanup()
   })
 
+  it('ignores empty resource-load error events (img/script 404s bubble with no error + empty message)', () => {
+    const { captureError, target, cleanup } = setup()
+    target.dispatchEvent(errorEvent(undefined, ''))
+    expect(captureError).not.toHaveBeenCalled()
+    cleanup()
+  })
+
   it('cleanup removes the listeners so no further events are reported', () => {
     const { captureError, target, cleanup } = setup()
     cleanup()

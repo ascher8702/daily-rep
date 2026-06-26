@@ -84,11 +84,15 @@ Deno.serve(async (req) => {
     }
     if (!customerId) {
       // Idempotency-key the create so a double-tapped checkout (two requests before the row is written)
-      // resolves to ONE Stripe customer instead of orphaning a duplicate. Keyed by uid: a user only ever
-      // has one customer, so retries within Stripe's idempotency window return the same object.
+      // resolves to ONE Stripe customer instead of orphaning a duplicate. The key is scoped to the
+      // creation *generation* (the prior customer id, or 'new' on first ever create) — NOT just the uid:
+      // a static uid key would make Stripe replay the original customer for ~24h, so the deleted/stale-
+      // customer recovery path above (customerId cleared → recreate) would get back the dead id and wedge
+      // checkout. Including the old id makes a post-deletion recreate a distinct key while still deduping
+      // a genuine double-tap (both racing requests read the same prior id).
       const customer = await stripe.customers.create(
         { email: user.email ?? undefined, metadata: { user_id: uid } },
-        { idempotencyKey: `cust:${uid}` },
+        { idempotencyKey: `cust:${uid}:${row?.stripe_customer_id ?? 'new'}` },
       )
       customerId = customer.id
       await admin

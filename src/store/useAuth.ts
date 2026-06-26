@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 import { startSync, stopSync } from '../lib/sync'
 import { emailValid, passwordIssue, normalizeEmail } from '../lib/auth'
 import { reportError } from '../lib/telemetry'
-import { settleWithin } from '../lib/async'
+import { runAuthBootstrap } from './authBootstrap'
 import { useStore } from './useStore'
 
 /** If the auth session bootstrap hasn't resolved in this long, proceed as signed-out rather than
@@ -77,39 +77,13 @@ export const useAuth = create<AuthState>((set) => ({
       return
     }
 
-    // Guard the bootstrap: a hung token refresh (offline, Supabase outage) would otherwise never
-    // resolve, leaving the gate stuck on the skeleton forever. settleWithin flips `initialized` after a
-    // timeout so the app falls through to the sign-in screen; a slow-but-successful session that lands
-    // afterwards still wires email + sync. A hard failure is reported and treated as signed-out.
-    settleWithin(supabase.auth.getSession(), SESSION_BOOTSTRAP_TIMEOUT_MS, {
-      onValue: ({ data }) => {
-        const u = data.session?.user
-        set({ email: u?.email ?? null, initialized: true })
-        if (u) void startSync(u.id)
-      },
-      onError: (e) => {
-        reportError(e, { scope: 'auth.getSession' })
-        set({ initialized: true })
-      },
-      onTimeout: () => {
-        reportError(new Error('auth getSession timed out'), { scope: 'auth.getSession.timeout' })
-        set({ initialized: true })
-      },
-    })
-
-    supabase.auth.onAuthStateChange((event, session) => {
-      const u = session?.user
-      set({ email: u?.email ?? null })
-      // A reset-password link signs the user into a temporary recovery session and fires this event;
-      // flag it so the gate shows the "set a new password" screen until the password is updated.
-      if (event === 'PASSWORD_RECOVERY') set({ recovering: true })
-      if (u) {
-        set({ pending: null })
-        void startSync(u.id)
-      } else {
-        set({ recovering: false })
-        void stopSync()
-      }
+    // Bootstrap auth/session. The race semantics (timeout backstop + "an auth event is authoritative,
+    // so a late getSession can't clobber a sign-in that happened during a hang") live in
+    // runAuthBootstrap, which is unit-tested in authBootstrap.test.ts.
+    runAuthBootstrap(supabase, set, {
+      startSync,
+      stopSync,
+      timeoutMs: SESSION_BOOTSTRAP_TIMEOUT_MS,
     })
   },
 

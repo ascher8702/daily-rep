@@ -11,6 +11,9 @@ import { reportError } from './telemetry'
  */
 export function installGlobalErrorHandlers(target: Window = window): () => void {
   const onError = (event: ErrorEvent) => {
+    // Resource-load failures (a 404'd <img>/<script>) bubble to window as an 'error' event with no error
+    // object and an empty message — nothing actionable, and pure noise once a sink is wired. Skip them.
+    if (event.error == null && !event.message) return
     // event.error carries the stack when available; fall back to the message string.
     reportError(event.error ?? event.message, { scope: 'window.onerror', message: event.message })
   }
