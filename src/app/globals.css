@@ -161,6 +161,59 @@ input[type='number'] {
   }
 }
 
+/* Workout-complete celebration — confetti fall + an Apple-style spring/ring on the check badge.
+   Per-piece trajectory is passed via the --dx/--dy/--rot custom properties (set inline). Honoured
+   only outside prefers-reduced-motion (the global reduce-motion rule neutralizes these). */
+.confetti-piece {
+  animation-name: confetti-fall;
+  animation-timing-function: cubic-bezier(0.2, 0.6, 0.35, 1);
+  animation-fill-mode: forwards;
+  will-change: transform, opacity;
+}
+@keyframes confetti-fall {
+  0% {
+    transform: translate3d(0, 0, 0) rotate(0deg);
+    opacity: 1;
+  }
+  12% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate3d(var(--dx), var(--dy), 0) rotate(var(--rot));
+    opacity: 0;
+  }
+}
+.celebrate-pop {
+  animation: celebrate-pop 0.6s cubic-bezier(0.2, 0.9, 0.25, 1.2) both;
+}
+@keyframes celebrate-pop {
+  0% {
+    transform: scale(0);
+  }
+  55% {
+    transform: scale(1.18);
+  }
+  75% {
+    transform: scale(0.93);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+.celebrate-ring {
+  animation: celebrate-ring 1s ease-out 0.05s both;
+}
+@keyframes celebrate-ring {
+  0% {
+    transform: scale(0.8);
+    opacity: 0.55;
+  }
+  100% {
+    transform: scale(2.3);
+    opacity: 0;
+  }
+}
+
 @layer utilities {
   /* Opt-in 44px touch target (Apple HIG) for small icon/stepper controls. Pairs a min height/width
      with a centered grid so the visual can stay compact while the tap area meets the guideline.

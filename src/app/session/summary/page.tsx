@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useEffect, useMemo } from 'react'
+import { Suspense, useEffect, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useStore } from '@/store/useStore'
 import {
@@ -15,6 +15,7 @@ import { fmtWeight, fmtDuration, fmtDate, fmtNum } from '@/lib/format'
 import { getExercise } from '@/data/exercises'
 import { muscleLabel } from '@/data/muscles'
 import SessionNote from '@/components/SessionNote'
+import CompletionCelebration from '@/components/CompletionCelebration'
 import { Button } from '@/components/ui/Button'
 import { StatTile } from '@/components/ui/StatTile'
 import {
@@ -37,6 +38,12 @@ function SummaryInner() {
   const setWorkoutNote = useStore((s) => s.setWorkoutNote)
 
   const workout = workouts.find((w) => w.id === id)
+
+  // celebrate only a FRESH finish (within ~15s of completion), captured once so a re-render / revisit
+  // of an older summary doesn't replay the confetti, chime, or haptic.
+  const [justCompleted] = useState(
+    () => !!workout?.completedAt && Date.now() - workout.completedAt < 15_000,
+  )
 
   // direct nav / stale link with no matching workout → just go home
   useEffect(() => {
@@ -69,12 +76,22 @@ function SummaryInner() {
 
   return (
     <div className="min-h-screen flex flex-col animate-fade-in pb-28">
+      {justCompleted && <CompletionCelebration count={summary.prs.length > 0 ? 120 : 80} />}
       <main className="flex-1 px-5 pt-10 safe-top">
         {/* celebratory hero */}
         <div className="flex flex-col items-center text-center">
-          <span className="grid place-items-center h-16 w-16 rounded-full bg-gradient-blaze text-on-accent shadow-icon animate-pop">
-            <CheckIcon size={34} strokeWidth={3} />
-          </span>
+          <div className="relative">
+            {justCompleted && (
+              <span aria-hidden className="absolute inset-0 rounded-full bg-blaze/30 celebrate-ring" />
+            )}
+            <span
+              className={`relative grid place-items-center h-16 w-16 rounded-full bg-gradient-blaze text-on-accent shadow-icon ${
+                justCompleted ? 'celebrate-pop' : 'animate-pop'
+              }`}
+            >
+              <CheckIcon size={34} strokeWidth={3} />
+            </span>
+          </div>
           <div className="mt-4 text-[11px] font-extrabold uppercase tracking-[0.12em] text-blaze-label">Workout Complete</div>
           <h1 className="font-display text-3xl font-black uppercase tracking-[-0.02em] leading-tight mt-1.5">{workout.title}</h1>
           <div className="text-sm text-fg/45 mt-1.5">
