@@ -11,8 +11,8 @@ import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supa
  */
 
 const PRICES = {
-  monthly: Deno.env.get('STRIPE_PRICE_MONTHLY') ?? 'price_1Tm0XVLukft9AoLzOS6G8osy',
-  annual: Deno.env.get('STRIPE_PRICE_ANNUAL') ?? 'price_1Tm0XVLukft9AoLzo1nBQcto',
+  monthly: Deno.env.get('STRIPE_PRICE_MONTHLY') ?? 'price_1TmM9lLy7BVo8A05IudiSYkf',
+  annual: Deno.env.get('STRIPE_PRICE_ANNUAL') ?? 'price_1TmM9lLy7BVo8A056dF3HnGw',
 }
 function planForPrice(priceId?: string | null): string | null {
   if (priceId === PRICES.monthly) return 'monthly'

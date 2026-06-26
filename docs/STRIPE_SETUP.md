@@ -52,16 +52,20 @@ trigger (`security definer`) are the only writers.
 
 ---
 
-## What's already provisioned (TEST mode — Stripe account `acct_1TlyIy…`)
+## What's already provisioned (TEST mode — Stripe account `acct_1TlyIs…`)
+
+> The account in use is `acct_1TlyIs…` (the one the Stripe dashboard / MCP is logged into). An earlier
+> set of objects was created in a *different* account (`acct_1TlyIy…`) from keys provided by mistake and
+> is now orphaned/unused — ignore it.
 
 | Resource | ID |
 | --- | --- |
-| Product | `prod_UlXc6Rkmr4EAWr` ("Daily Rep Pro") |
-| Price — monthly $7.99 | `price_1Tm0XVLukft9AoLzOS6G8osy` |
-| Price — annual $59.99 | `price_1Tm0XVLukft9AoLzo1nBQcto` |
-| Billing portal config | `bpc_1Tm0YDLukft9AoLzsVkRihVh` (default) |
+| Product | `prod_UltxFPF9CUH7wU` ("Daily Rep Pro") |
+| Price — monthly $7.99 | `price_1TmM9lLy7BVo8A05IudiSYkf` |
+| Price — annual $59.99 | `price_1TmM9lLy7BVo8A056dF3HnGw` |
+| Billing portal config | `bpc_1TmMALLy7BVo8A05wOjpz8I1` (default) |
 | Webhook endpoint | `https://aswwhsxubqyzbrfoptoq.supabase.co/functions/v1/stripe-webhook` |
-| Webhook signing secret | `whsec_96VGJaW2hRQVGrgojsMw9Dn5rcbwihM6` |
+| Webhook signing secret | `whsec_S3SDgIa02u6f8CyvwFZWckVQRjfSAs2u` |
 
 DB migration `subscriptions_table_and_trial` and Edge Functions `create-checkout-session`,
 `create-portal-session`, `set-auto-renew`, `stripe-webhook`, and the updated `delete-account` are deployed.
@@ -82,14 +86,14 @@ startup) and checkout returns an error.
 | Secret | Value |
 | --- | --- |
 | `STRIPE_SECRET_KEY` | your Stripe **test** secret key (`sk_test_…`) |
-| `STRIPE_WEBHOOK_SECRET` | `whsec_96VGJaW2hRQVGrgojsMw9Dn5rcbwihM6` |
+| `STRIPE_WEBHOOK_SECRET` | `whsec_S3SDgIa02u6f8CyvwFZWckVQRjfSAs2u` |
 
 **Or via CLI:**
 
 ```bash
 supabase secrets set \
   STRIPE_SECRET_KEY=sk_test_xxx \
-  STRIPE_WEBHOOK_SECRET=whsec_96VGJaW2hRQVGrgojsMw9Dn5rcbwihM6 \
+  STRIPE_WEBHOOK_SECRET=whsec_S3SDgIa02u6f8CyvwFZWckVQRjfSAs2u \
   --project-ref aswwhsxubqyzbrfoptoq
 ```
 

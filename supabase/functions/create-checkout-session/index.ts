@@ -18,8 +18,8 @@ const cors = {
 
 // Test-mode price IDs are NOT secret — baked in as defaults, overridable via env for live mode.
 const PRICES: Record<string, string> = {
-  monthly: Deno.env.get('STRIPE_PRICE_MONTHLY') ?? 'price_1Tm0XVLukft9AoLzOS6G8osy',
-  annual: Deno.env.get('STRIPE_PRICE_ANNUAL') ?? 'price_1Tm0XVLukft9AoLzo1nBQcto',
+  monthly: Deno.env.get('STRIPE_PRICE_MONTHLY') ?? 'price_1TmM9lLy7BVo8A05IudiSYkf',
+  annual: Deno.env.get('STRIPE_PRICE_ANNUAL') ?? 'price_1TmM9lLy7BVo8A056dF3HnGw',
 }
 
 const DAY_MS = 86_400_000
@@ -71,14 +71,20 @@ Deno.serve(async (req) => {
       return json({ error: 'already_subscribed' }, 409)
     }
 
-    // Reuse the user's Stripe customer, or create one (idempotency key dedupes concurrent first taps).
+    // Reuse the user's Stripe customer IF it still exists, otherwise (re)create one. Validating the
+    // stored id guards against a stale / deleted / wrong-account customer ever wedging checkout.
     let customerId = row?.stripe_customer_id as string | undefined
+    if (customerId) {
+      try {
+        const existing = await stripe.customers.retrieve(customerId)
+        if ((existing as { deleted?: boolean }).deleted) customerId = undefined
+      } catch {
+        customerId = undefined // "No such customer" (deleted / different account) → recreate below
+      }
+    }
     const reusedCustomer = !!customerId
     if (!customerId) {
-      const customer = await stripe.customers.create(
-        { email: user.email ?? undefined, metadata: { user_id: uid } },
-        { idempotencyKey: `customer_${uid}` },
-      )
+      const customer = await stripe.customers.create({ email: user.email ?? undefined, metadata: { user_id: uid } })
       customerId = customer.id
       await admin
         .from('subscriptions')
