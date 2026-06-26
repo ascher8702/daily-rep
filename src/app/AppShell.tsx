@@ -121,6 +121,17 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     )
   }
 
+  // Admin portal: signed-in only, but bypasses the entitlement/onboarding gates (real authorization is
+  // enforced server-side by the `admin` Edge Function against ADMIN_EMAILS — a non-admin just gets a
+  // "not authorized" view). This keeps it reachable even for an admin whose own subscription lapsed.
+  if (signedInEmail && pathname.startsWith('/admin')) {
+    return (
+      <ErrorBoundary>
+        <div className="mx-auto max-w-md min-h-full">{children}</div>
+      </ErrorBoundary>
+    )
+  }
+
   // Paid product: once signed in, require an active subscription or a live free trial. While the
   // entitlement resolves, hold on the skeleton (don't flash the paywall); a lapsed user gets the
   // paywall in place of the app. (localOnly dev builds have no cloud and skip this gate.)

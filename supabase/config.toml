@@ -23,3 +23,8 @@ verify_jwt = true
 
 [functions.delete-account]
 verify_jwt = true
+
+# Admin portal backend — signed-in only (verify_jwt), then authorizes the caller's email against the
+# ADMIN_EMAILS secret inside the function. Set ADMIN_EMAILS (comma-separated) in the project secrets.
+[functions.admin]
+verify_jwt = true
