@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Daily Rep — Production Readiness To-Dos</title>
+<style>
+  :root {
+    --bg: #0a0c10; --card: #12151c; --hairline: #232a36; --fg: #e7ecf3;
+    --muted: #8b94a6; --lime: #c6f24e; --blaze: #ff7a1e; --red: #ff5a5a;
+    --amber: #fcd34d; --green: #6ee787;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased; padding: 0 16px 80px;
+  }
+  .wrap { max-width: 820px; margin: 0 auto; }
+  header { padding: 32px 0 8px; }
+  h1 { font-size: 24px; font-weight: 800; letter-spacing: -0.02em; margin: 0; }
+  .sub { color: var(--muted); margin: 6px 0 0; font-size: 13.5px; }
+  .progress-wrap {
+    position: sticky; top: 0; background: var(--bg); padding: 14px 0 12px;
+    z-index: 5; border-bottom: 1px solid var(--hairline); margin-bottom: 8px;
+  }
+  .bar { height: 10px; background: var(--card); border-radius: 99px; overflow: hidden; border: 1px solid var(--hairline); }
+  .bar > i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--blaze), var(--lime)); transition: width .25s ease; }
+  .progress-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 8px; }
+  .count { font-weight: 800; font-size: 14px; }
+  .count b { color: var(--lime); }
+  button.reset {
+    background: transparent; color: var(--muted); border: 1px solid var(--hairline);
+    border-radius: 8px; padding: 6px 12px; font-size: 12.5px; cursor: pointer;
+  }
+  button.reset:hover { color: var(--fg); border-color: var(--muted); }
+  section { margin-top: 26px; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin: 0 0 4px; display: flex; align-items: center; gap: 8px; }
+  .dot { width: 9px; height: 9px; border-radius: 99px; display: inline-block; }
+  .p0 { background: var(--red); } .p1 { background: var(--amber); } .verify { background: var(--green); } .done { background: var(--muted); }
+  .sectsub { color: var(--muted); font-size: 12.5px; margin: 0 0 12px; }
+  ul { list-style: none; margin: 0; padding: 0; }
+  li.task {
+    display: flex; gap: 12px; align-items: flex-start; background: var(--card);
+    border: 1px solid var(--hairline); border-radius: 12px; padding: 13px 14px; margin-bottom: 8px;
+    cursor: pointer; transition: border-color .15s, opacity .15s;
+  }
+  li.task:hover { border-color: #2e3848; }
+  li.task.checked { opacity: 0.55; }
+  li.task.checked .title { text-decoration: line-through; text-decoration-color: var(--muted); }
+  .box {
+    flex: 0 0 auto; width: 22px; height: 22px; border-radius: 7px; border: 2px solid var(--hairline);
+    margin-top: 1px; display: grid; place-items: center; transition: background .15s, border-color .15s;
+  }
+  li.task.checked .box { background: var(--lime); border-color: var(--lime); }
+  .box svg { opacity: 0; transition: opacity .15s; }
+  li.task.checked .box svg { opacity: 1; }
+  .body { min-width: 0; }
+  .title { font-weight: 650; }
+  .desc { color: var(--muted); font-size: 13px; margin-top: 3px; }
+  .desc code { background: #0e1117; border: 1px solid var(--hairline); border-radius: 5px; padding: 1px 5px; font-size: 12px; color: #cdd6e4; }
+  footer { color: var(--muted); font-size: 12px; margin-top: 34px; text-align: center; }
+  .saved { color: var(--green); font-size: 12px; opacity: 0; transition: opacity .3s; }
+  .saved.show { opacity: 1; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Daily Rep — Production Readiness</h1>
+    <p class="sub">The remaining go-live checklist. State is saved in this browser (localStorage) — check things off as you go. <span class="saved" id="saved">saved ✓</span></p>
+  </header>
+
+  <div class="progress-wrap">
+    <div class="progress-row">
+      <span class="count"><b id="doneN">0</b> / <span id="totalN">0</span> done</span>
+      <button class="reset" id="reset">Reset</button>
+    </div>
+    <div class="bar"><i id="barFill"></i></div>
+  </div>
+
+  <div id="lists"></div>
+
+  <footer>Generated from the production-readiness work on branch
+    <code>claude/ultracode-production-readiness-didv9p</code>. The code-side work is done &amp; validated;
+    these are the human/infra steps that remain.</footer>
+</div>
+
+<script>
+// ── Task data ───────────────────────────────────────────────────────────────
+// id must stay stable — it's the localStorage key for each checkbox.
+const SECTIONS = [
+  {
+    title: "P0 — Launch blockers (human / infra)", cls: "p0",
+    sub: "Must be done before charging real users.",
+    tasks: [
+      { id: "p0-migrations", title: "Apply the 5 new migrations to the Supabase project",
+        desc: "<code>supabase db push</code> — entitlement RLS (is_active_subscriber), trial ledger, reconcile cron, analytics-table RLS hardening. They're version-controlled &amp; validated but intentionally not applied yet." },
+      { id: "p0-sentry-dsn", title: "Set NEXT_PUBLIC_SENTRY_DSN in Vercel (Production + Preview)",
+        desc: "Sentry → Settings → Projects → daily-reps → Client Keys (DSN). This alone turns on error tracking." },
+      { id: "p0-turnstile", title: "Provision Cloudflare Turnstile + enable Supabase CAPTCHA",
+        desc: "Set <code>NEXT_PUBLIC_TURNSTILE_SITE_KEY</code> + the secret in Supabase → Auth → Attack Protection. Code seam already present." },
+      { id: "p0-pitr", title: "Enable Point-in-Time Recovery (PITR)",
+        desc: "delete-account is irreversible (FK cascade) — PITR is the only recovery from accidental deletion." },
+      { id: "p0-hibp", title: "Enable leaked-password (HIBP) protection + password min length",
+        desc: "Supabase → Auth settings. Currently bypassable client-only." },
+      { id: "p0-rotate", title: "Rotate the Stripe secret key + webhook signing secret",
+        desc: "Both were exposed (test mode). Roll them in Stripe, update the Supabase Edge Function secrets." },
+      { id: "p0-legal", title: "Counsel fills the Privacy/Terms placeholders",
+        desc: "[Legal Entity] / [Jurisdiction] / age / subscriptions clause. <code>pnpm check:legal</code> + the Vercel build gate block deploy until done." },
+    ],
+  },
+  {
+    title: "P1 — Before scaling / marketing", cls: "p1",
+    sub: "Fix soon after launch.",
+    tasks: [
+      { id: "p1-sentry-token", title: "Set SENTRY_AUTH_TOKEN in the build/CI env (source maps)",
+        desc: "Sentry → Settings → Auth Tokens (scope project:releases). Gives readable stack traces. Builds pass without it." },
+      { id: "p1-reconcile", title: "Deploy reconcile-subscriptions + set RECONCILE_SECRET + Vault entries",
+        desc: "The missed-webhook safety net. See migration 20260626160000 header for the vault.create_secret calls." },
+      { id: "p1-webhook-events", title: "Subscribe the Stripe webhook to the expanded event set",
+        desc: "checkout.session.completed, customer.subscription.created|updated|deleted|paused|resumed, invoice.paid, invoice.payment_failed, customer.deleted, charge.dispute.created." },
+      { id: "p1-site-url", title: "Set NEXT_PUBLIC_SITE_URL = https://daily-rep.app",
+        desc: "Canonical URL for OG/metadata; keep consistent with the domain + email templates." },
+      { id: "p1-dedicated", title: "Move to a dedicated Supabase project",
+        desc: "Production data currently shares a project with an unrelated app. Runbook: docs/runbook-dedicated-project.md." },
+      { id: "p1-branch-protection", title: "Enable branch protection requiring CI to pass",
+        desc: "So lint/typecheck/test/build + edge-tests actually block merges to main." },
+      { id: "p1-staging", title: "Stand up a staging environment",
+        desc: "Separate Supabase + Stripe test mode to exercise sign-up → checkout → entitlement before prod." },
+    ],
+  },
+  {
+    title: "Post-deploy smoke test", cls: "verify",
+    sub: "Run these against production right after the first deploy.",
+    tasks: [
+      { id: "v-signup", title: "Sign up a throwaway account → trial is active, onboarding works" },
+      { id: "v-subscribe", title: "Subscribe → entitlement flips to Pro on /checkout/return within seconds" },
+      { id: "v-entitlement", title: "Lapsed user's cloud write is REJECTED (Postgres 42501)",
+        desc: "Set trial_ends_at in the past for a test user; confirm the sync push is denied. Proves the server-side entitlement gate is live." },
+      { id: "v-sentry", title: "Trigger an error → it appears in Sentry → Issues" },
+      { id: "v-support", title: "Support email reads support@daily-rep.app on /privacy and /terms" },
+      { id: "v-portal", title: "Billing portal opens; toggle auto-renew reflects back" },
+    ],
+  },
+  {
+    title: "Already shipped (reference)", cls: "done",
+    sub: "Code-side P0/P1 — done, gated, and QA-validated on the branch. Tick if you've reviewed each.",
+    tasks: [
+      { id: "s-schema", title: "Schema-as-code: 19 migrations rescued from the remote ledger" },
+      { id: "s-entitlement", title: "Server-side entitlement RLS (validated 13/13 vs live engine + TS parity)" },
+      { id: "s-telemetry", title: "Telemetry seam + global error handler + Sentry wired (DSN pending)" },
+      { id: "s-auth", title: "getSession timeout guard + auth-clobber race fix" },
+      { id: "s-billing", title: "Stripe idempotency + dup-sub guard + checkout recovery fix" },
+      { id: "s-trial", title: "Trial-abuse normalized-email ledger" },
+      { id: "s-reconcile", title: "Webhook reconciliation + missing-event handling + edge-fn tests" },
+      { id: "s-ci", title: "ESLint + lint gate, legal-placeholder guard, deno edge-tests CI job" },
+      { id: "s-deploy", title: "Deploy runbook + vercel.json + mechanical legal deploy gate" },
+      { id: "s-support", title: "Support-email fix, committed-secret scrub" },
+    ],
+  },
+];
+
+// ── Persistence ──────────────────────────────────────────────────────────────
+const KEY = "daily-rep-todos-v1";
+const load = () => { try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch { return {}; } };
+let state = load();
+let savedTimer;
+const save = () => {
+  try { localStorage.setItem(KEY, JSON.stringify(state)); } catch {}
+  const el = document.getElementById("saved");
+  el.classList.add("show");
+  clearTimeout(savedTimer);
+  savedTimer = setTimeout(() => el.classList.remove("show"), 900);
+};
+
+const CHECK = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#0a0c10" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+
+// ── Render ───────────────────────────────────────────────────────────────────
+const lists = document.getElementById("lists");
+let total = 0;
+for (const sec of SECTIONS) {
+  const s = document.createElement("section");
+  s.innerHTML = `<h2><span class="dot ${sec.cls}"></span>${sec.title}</h2><p class="sectsub">${sec.sub}</p>`;
+  const ul = document.createElement("ul");
+  for (const t of sec.tasks) {
+    total++;
+    const li = document.createElement("li");
+    li.className = "task" + (state[t.id] ? " checked" : "");
+    li.dataset.id = t.id;
+    li.innerHTML = `<span class="box">${CHECK}</span><div class="body"><div class="title">${t.title}</div>${t.desc ? `<div class="desc">${t.desc}</div>` : ""}</div>`;
+    li.addEventListener("click", () => toggle(t.id, li));
+    ul.appendChild(li);
+  }
+  s.appendChild(ul);
+  lists.appendChild(s);
+}
+document.getElementById("totalN").textContent = total;
+
+function refresh() {
+  const done = Object.values(state).filter(Boolean).length;
+  document.getElementById("doneN").textContent = done;
+  document.getElementById("barFill").style.width = (total ? (done / total * 100) : 0) + "%";
+}
+function toggle(id, li) {
+  state[id] = !state[id];
+  li.classList.toggle("checked", !!state[id]);
+  save(); refresh();
+}
+document.getElementById("reset").addEventListener("click", () => {
+  if (!confirm("Clear all checkmarks?")) return;
+  state = {}; save();
+  document.querySelectorAll("li.task.checked").forEach(li => li.classList.remove("checked"));
+  refresh();
+});
+refresh();
+</script>
+</body>
+</html>
