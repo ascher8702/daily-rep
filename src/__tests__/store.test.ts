@@ -1508,53 +1508,6 @@ describe('exercise-level RPE', () => {
     useStore.getState().finishWorkout()
     expect(useStore.getState().workouts[0].exercises[0].rpe).toBe(9)
   })
-
-  it('mergePersisted hoists legacy per-set rpe up to the exercise (the hardest rated set)', () => {
-    const legacy = {
-      workouts: [
-        {
-          id: 'old',
-          date: 1,
-          status: 'completed',
-          title: 'Legacy',
-          focus: [],
-          exercises: [
-            {
-              exerciseId: 'barbell-bench-press',
-              targetReps: [5, 5],
-              // old shape: rpe lived on each working set; warm-ups/undone are ignored
-              sets: [
-                { id: 'w', weight: 45, reps: 10, done: true, warmup: true, rpe: 5 },
-                { id: 'a', weight: 135, reps: 5, done: true, rpe: 8 },
-                { id: 'b', weight: 135, reps: 5, done: true, rpe: 9 },
-              ],
-            },
-          ],
-        },
-      ],
-    }
-    const merged = mergePersisted(legacy, useStore.getState())
-    expect(merged.workouts[0].exercises[0].rpe).toBe(9) // max of the rated working sets (8, 9)
-  })
-
-  it('mergePersisted leaves a legacy exercise with no rated sets unrated', () => {
-    const legacy = {
-      workouts: [
-        {
-          id: 'old2',
-          date: 1,
-          status: 'completed',
-          title: 'Legacy',
-          focus: [],
-          exercises: [
-            { exerciseId: 'barbell-bench-press', targetReps: [5, 5], sets: [{ id: 'a', weight: 135, reps: 5, done: true }] },
-          ],
-        },
-      ],
-    }
-    const merged = mergePersisted(legacy, useStore.getState())
-    expect(merged.workouts[0].exercises[0].rpe).toBeUndefined()
-  })
 })
 
 describe('mergePersisted — profile numeric sanitization (corrupt-blob hardening)', () => {

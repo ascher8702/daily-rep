@@ -335,16 +335,7 @@ function repairExercise(ex: unknown): WorkoutExercise | null {
   const tr = e.targetReps
   const goodTargetReps =
     Array.isArray(tr) && tr.length === 2 && tr.every((n) => typeof n === 'number' && Number.isFinite(n))
-  let repaired = goodTargetReps ? e : { ...e, targetReps: DEFAULT_TARGET_REPS }
-  // legacy hydration: RPE used to be logged per-set; hoist any rated working set up to the exercise
-  // (the hardest set best represents the session effort) so old history keeps its RPE after the move.
-  if (repaired.rpe == null && Array.isArray(repaired.sets)) {
-    const setRpes = repaired.sets
-      .filter((s) => s && typeof s === 'object' && !s.warmup && (s as { done?: boolean }).done)
-      .map((s) => (s as { rpe?: unknown }).rpe)
-      .filter((r): r is number => typeof r === 'number' && Number.isFinite(r))
-    if (setRpes.length) repaired = { ...repaired, rpe: Math.max(...setRpes) }
-  }
+  const repaired = goodTargetReps ? e : { ...e, targetReps: DEFAULT_TARGET_REPS }
   return validExercise(repaired) ? repaired : null
 }
 
