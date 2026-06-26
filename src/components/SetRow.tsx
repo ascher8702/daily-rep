@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import type { Exercise, LoggedSet } from '@/types'
 import { fmtWeight } from '@/lib/format'
-import { nextLoadableUp, prevLoadableDown, plateLoad } from '@/lib/weights'
+import { plateLoad } from '@/lib/weights'
 import { CheckIcon, TrashIcon, HistoryIcon } from '@/components/icons'
 import Sheet from '@/components/Sheet'
 
@@ -33,16 +33,11 @@ interface SetRowProps {
   onReps: (reps: number) => void
   onToggle: () => void
   onRemove: () => void
-  /** set/clear the optional RPE (rate of perceived exertion) on a completed working set */
-  onRpe?: (rpe: number | undefined) => void
 }
 
-/** RPE scale offered after a working set (6–10; RPE 10 = no reps left, 8 ≈ 2 in reserve). */
-const RPE_OPTIONS = [6, 7, 8, 9, 10]
-
-/** One editable set row (weight / reps / done) with +/- steppers and an optional tap-to-apply
+/** One editable set row (weight / reps / done) with an optional tap-to-apply
  *  "last time" reference. Shared by the per-exercise detail page and the inline session-list editor. */
-export function SetRow({ set, label, unit, isBodyweight, ex, domId, lastRef, onApplyLast, onWeight, onReps, onToggle, onRemove, onRpe }: SetRowProps) {
+export function SetRow({ set, label, unit, isBodyweight, ex, domId, lastRef, onApplyLast, onWeight, onReps, onToggle, onRemove }: SetRowProps) {
   const isWarmup = !!set.warmup
   // plate math: non-null only for barbell lifts with a load entered → drives the optional plate sub-line
   const [platesOpen, setPlatesOpen] = useState(false)
@@ -54,13 +49,6 @@ export function SetRow({ set, label, unit, isBodyweight, ex, domId, lastRef, onA
     }
     onToggle()
   }
-  // weight steps snap to the exercise's smallest loadable jump (plates/dumbbells); fall back to a
-  // gym increment for added-bodyweight / unknown exercises. Reps step by 1, floored at 0.
-  const stepWeight = (dir: 1 | -1) => {
-    if (ex) onWeight(dir > 0 ? nextLoadableUp(set.weight, ex, unit) : prevLoadableDown(set.weight, ex, unit))
-    else onWeight(Math.max(0, Math.round((set.weight + dir * (unit === 'kg' ? 2.5 : 5)) * 10) / 10))
-  }
-  const stepReps = (dir: 1 | -1) => onReps(Math.max(0, set.reps + dir))
   const refText = lastRef
     ? isBodyweight || lastRef.weight === 0
       ? `${lastRef.reps} reps`
@@ -82,14 +70,12 @@ export function SetRow({ set, label, unit, isBodyweight, ex, domId, lastRef, onA
         value={set.weight}
         ariaLabel={`Weight in ${unit}`}
         onChange={onWeight}
-        onStep={stepWeight}
         placeholder={lastRef && lastRef.weight > 0 ? String(lastRef.weight) : '0'}
       />
       <NumberField
         value={set.reps}
         ariaLabel="Reps"
         onChange={onReps}
-        onStep={stepReps}
         integer
         placeholder={lastRef ? String(lastRef.reps) : '0'}
       />
@@ -150,32 +136,6 @@ export function SetRow({ set, label, unit, isBodyweight, ex, domId, lastRef, onA
             <span><span className="text-fg/25">Last</span> {refText}</span>
           </button>
           <div />
-        </div>
-      )}
-      {/* RPE — optional effort log, surfaced once a WORKING set is completed (reuses the sub-row slot
-          left empty when a set is done; warm-ups and not-yet-done sets don't show it) */}
-      {set.done && !set.warmup && onRpe && (
-        <div className="flex items-center gap-1.5 px-2 -mt-0.5 pb-1.5">
-          <span className="text-[11px] font-medium text-fg/30 w-7 shrink-0">RPE</span>
-          {RPE_OPTIONS.map((n) => {
-            const active = set.rpe === n
-            return (
-              <button
-                key={n}
-                type="button"
-                onClick={() => onRpe(active ? undefined : n)}
-                aria-pressed={active}
-                aria-label={`RPE ${n}${active ? ', selected — tap to clear' : ''}`}
-                className={`h-7 flex-1 rounded-md text-[12px] font-semibold tabular-nums transition ${
-                  active
-                    ? 'bg-blaze/[0.15] text-blaze-label border border-blaze/40'
-                    : 'bg-raised text-fg/40 border border-hairline/[0.08] active:text-fg/70'
-                }`}
-              >
-                {n}
-              </button>
-            )
-          })}
         </div>
       )}
       {/* plate-math sheet — per-side breakdown for the current load */}
@@ -239,21 +199,18 @@ export function NumberField({
   onChange,
   integer,
   placeholder = '0',
-  onStep,
 }: {
   value: number
   ariaLabel: string
   onChange: (n: number) => void
   integer?: boolean
   placeholder?: string
-  /** when provided, flank the input with −/+ steppers for one-thumb adjustments */
-  onStep?: (dir: 1 | -1) => void
 }) {
   const [text, setText] = useState<string | null>(null)
   const display = text ?? (value === 0 ? '' : String(value))
   // reps are whole numbers (decimals pollute volume / 1RM math); weight allows decimals
   const pattern = integer ? /^\d*$/ : /^\d*\.?\d*$/
-  const input = (
+  return (
     <input
       type="text"
       inputMode={integer ? 'numeric' : 'decimal'}
@@ -269,39 +226,7 @@ export function NumberField({
         onChange(Math.min(integer ? Math.floor(n) : n, 9999))
       }}
       onBlur={() => setText(null)}
-      className={`min-w-0 flex-1 rounded-lg bg-raised border border-hairline/[0.08] py-2.5 text-center text-[15px] font-semibold tabular-nums outline-none focus:border-blaze placeholder:text-fg/25 ${
-        onStep ? 'px-0.5' : 'w-full px-3 rounded-xl'
-      }`}
+      className="min-w-0 w-full rounded-xl bg-raised border border-hairline/[0.08] py-2.5 px-3 text-center text-[15px] font-semibold tabular-nums outline-none focus:border-blaze placeholder:text-fg/25"
     />
-  )
-  if (!onStep) return input
-  const step = (dir: 1 | -1) => {
-    onStep(dir)
-    setText(null) // commit any in-progress text so the stepped value shows
-  }
-  return (
-    <div className="flex items-stretch gap-1">
-      {/* Steppers are the most-used mid-set control: widen from w-6 (24px) to w-8 (32px) and pin
-          min-h 44px so the tap area meets the touch guideline (items-stretch already matches them to
-          the input's height; tap-min-h-44 guarantees the floor on short rows). w-8 keeps enough room
-          for the numeric input to stay central and show 3-digit loads. */}
-      <button
-        type="button"
-        aria-label={`Decrease ${ariaLabel}`}
-        onClick={() => step(-1)}
-        className="shrink-0 w-8 tap-min-h-44 rounded-lg bg-raised border border-hairline/[0.08] text-fg/55 text-lg leading-none grid place-items-center active:bg-card active:scale-90 transition"
-      >
-        −
-      </button>
-      {input}
-      <button
-        type="button"
-        aria-label={`Increase ${ariaLabel}`}
-        onClick={() => step(1)}
-        className="shrink-0 w-8 tap-min-h-44 rounded-lg bg-raised border border-hairline/[0.08] text-fg/55 text-lg leading-none grid place-items-center active:bg-card active:scale-90 transition"
-      >
-        +
-      </button>
-    </div>
   )
 }

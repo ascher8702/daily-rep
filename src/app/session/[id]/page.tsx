@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import type { Dir, Equipment } from '@/types'
 import { useStore, resolvePlan } from '@/store/useStore'
@@ -46,6 +46,7 @@ export default function ExerciseDetailPage() {
   const addWarmupSets = useStore((s) => s.addWarmupSets)
   const removeSet = useStore((s) => s.removeSet)
   const toggleSetDone = useStore((s) => s.toggleSetDone)
+  const setExerciseEffort = useStore((s) => s.setExerciseEffort)
   const swapExercise = useStore((s) => s.swapExercise)
   const replaceInActivePlan = useStore((s) => s.replaceInActivePlan)
   const removeExercise = useStore((s) => s.removeExercise)
@@ -53,6 +54,9 @@ export default function ExerciseDetailPage() {
 
   const [infoOpen, setInfoOpen] = useState(false)
   const [swapOpen, setSwapOpen] = useState(false)
+  const [effortOpen, setEffortOpen] = useState(false)
+  // auto-pop the effort prompt once per exercise the first time it's fully logged
+  const effortPromptedFor = useRef<string | null>(null)
   const [pendingSwap, setPendingSwap] = useState<string | null>(null) // newId awaiting one-time vs plan-replace choice
   const [showWarmups, setShowWarmups] = useState(true) // warm-ups visible by default
 
@@ -64,6 +68,21 @@ export default function ExerciseDetailPage() {
   useEffect(() => {
     if (!current || !we) router.replace('/session')
   }, [current, we, router])
+
+  // once every working set is logged, pop the effort prompt — once per exercise, and only if the
+  // user hasn't already recorded an effort (so re-visiting a logged lift doesn't nag).
+  useEffect(() => {
+    if (!we) return
+    const key = we.instanceId ?? we.exerciseId
+    const working = we.sets.filter((s) => !s.warmup)
+    const allLogged = working.length > 0 && working.every((s) => s.done)
+    const hasEffort = typeof we.rpe === 'number'
+    if (allLogged && !hasEffort && effortPromptedFor.current !== key) {
+      effortPromptedFor.current = key
+      setEffortOpen(true)
+    }
+  }, [we])
+
   if (!current || !we) return null
 
   const ex = getExercise(we.exerciseId)
@@ -76,6 +95,8 @@ export default function ExerciseDetailPage() {
   const totalWorking = workingSets.length
   const doneWorking = workingSets.filter((s) => s.done).length
   const allDone = totalWorking > 0 && doneWorking === totalWorking
+  // the effort already recorded for this lift, as reps-in-reserve (RPE 10 → 0 more reps)
+  const loggedRir = we.rpe != null ? Math.max(0, 10 - we.rpe) : null
   const topWeight = workingSets.reduce((m, s) => Math.max(m, s.weight), 0)
   const isBodyweight = !!ex && isBodyweightExercise(ex)
   const plates = ex && topWeight > 0 ? platesPerSide(topWeight, ex, unit) : null
@@ -139,22 +160,24 @@ export default function ExerciseDetailPage() {
     <div className="min-h-screen flex flex-col animate-fade-in">
       {/* header */}
       <header className="sticky top-0 z-30 safe-top bg-bg/[0.86] backdrop-blur-md border-b border-hairline/10">
-        <div className="px-4 pt-3 pb-3 flex items-center gap-2">
+        {/* 1fr / auto / 1fr keeps the title at the true center — the side columns stay equal width
+            even though the "Workout" back button is wider than the right-hand done indicator. */}
+        <div className="px-4 pt-3 pb-3 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
           <button
             onClick={() => router.push('/session')}
             aria-label="Back to workout"
-            className="shrink-0 inline-flex items-center gap-1 text-sm text-fg/60 active:text-fg pr-1"
+            className="justify-self-start inline-flex items-center gap-1 text-sm text-fg/60 active:text-fg pr-1"
           >
             <ChevronLeft size={20} /> Workout
           </button>
-          <div className="flex-1 min-w-0 text-center px-2">
+          <div className="min-w-0 text-center px-2">
             <div className="font-black uppercase tracking-[-0.01em] truncate leading-tight">{name}</div>
             <div className="text-[11px] text-fg/45 tabular-nums">
               {doneWorking}/{totalWorking} sets · {we.targetReps[0]}–{we.targetReps[1]} reps
               {perSideLabel(ex) ? ` · ${perSideLabel(ex)}` : ''}
             </div>
           </div>
-          <div className="shrink-0 w-9 flex justify-end">
+          <div className="justify-self-end w-9 flex justify-end">
             {allDone && (
               <span className="grid place-items-center h-7 w-7 rounded-full bg-recovery-fresh text-bg">
                 <CheckIcon size={16} strokeWidth={3} />
@@ -318,7 +341,6 @@ export default function ExerciseDetailPage() {
                   if (advancing) scrollNextUndoneIntoView(we.sets, set)
                 }}
                 onRemove={() => removeSet(exKey, set.id)}
-                onRpe={(rpe) => updateSet(exKey, set.id, { rpe })}
               />
             )
           })}
@@ -343,6 +365,20 @@ export default function ExerciseDetailPage() {
         >
           <PlusIcon size={16} /> Add set
         </button>
+
+        {/* effort recap — once the lift is fully logged, surface the recorded reps-in-reserve and let
+            the user open the prompt again to change it */}
+        {allDone && (
+          <button
+            onClick={() => setEffortOpen(true)}
+            className="mt-3 w-full rounded-xl bg-raised border border-hairline/[0.08] px-3.5 py-2.5 flex items-center justify-between text-left active:scale-[0.99] transition"
+          >
+            <span className="text-[13px] font-medium text-fg/55">Effort</span>
+            <span className="text-[13px] font-semibold text-fg tabular-nums">
+              {loggedRir == null ? 'Tap to rate' : `${loggedRir >= 4 ? '4+' : loggedRir} more rep${loggedRir === 1 ? '' : 's'} left`}
+            </span>
+          </button>
+        )}
 
         {/* remove exercise */}
         <button
@@ -376,6 +412,40 @@ export default function ExerciseDetailPage() {
           </Button>
         </div>
       </div>
+
+      {/* effort prompt — asked once all sets are logged: reps-in-reserve on the final working set */}
+      <Sheet open={effortOpen} onClose={() => setEffortOpen(false)} title="How many more reps could you do?">
+        <div className="pt-1">
+          <p className="text-[14px] leading-snug text-fg/55">
+            On your last set of {name}, how many more reps could you have done?
+          </p>
+          <div className="mt-4 grid grid-cols-5 gap-2">
+            {[0, 1, 2, 3, 4].map((rir) => {
+              const active = loggedRir != null && (rir === 4 ? loggedRir >= 4 : loggedRir === rir)
+              return (
+                <button
+                  key={rir}
+                  type="button"
+                  onClick={() => {
+                    setExerciseEffort(exKey, rir)
+                    setEffortOpen(false)
+                  }}
+                  aria-pressed={active}
+                  aria-label={`${rir === 4 ? '4 or more' : rir} more reps`}
+                  className={`h-14 rounded-xl text-lg font-bold tabular-nums transition active:scale-90 ${
+                    active
+                      ? 'bg-blaze/[0.15] text-blaze-label border border-blaze/40'
+                      : 'bg-raised text-fg/70 border border-hairline/[0.08] active:text-fg'
+                  }`}
+                >
+                  {rir === 4 ? '4+' : rir}
+                </button>
+              )
+            })}
+          </div>
+          <p className="mt-3 text-center text-xs text-fg/40">0 = couldn’t do another · 4+ = plenty left in the tank</p>
+        </div>
+      </Sheet>
 
       {/* swap picker */}
       <ExercisePicker

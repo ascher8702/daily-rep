@@ -292,7 +292,14 @@ function WorkoutDetail({
           const isBodyweight = !!ex && isBodyweightExercise(ex)
           return (
             <div key={`${we.exerciseId}-${i}`} className="card p-4">
-              <div className="font-semibold">{ex?.name ?? 'Unknown exercise'}</div>
+              <div className="flex items-center justify-between gap-2">
+                <div className="font-semibold">{ex?.name ?? 'Unknown exercise'}</div>
+                {we.rpe != null && (
+                  <span className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold text-blaze-label bg-blaze/[0.12] border border-blaze/30 tabular-nums">
+                    RPE {we.rpe}
+                  </span>
+                )}
+              </div>
               <div className="mt-2.5 space-y-1.5">
                 {we.sets.map((s, si) => (
                   <div
@@ -308,11 +315,6 @@ function WorkoutDetail({
                         : fmtWeight(s.weight, unit)}{' '}
                       × {s.reps}
                     </span>
-                    {s.rpe != null && !s.warmup && (
-                      <span className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold text-blaze-label bg-blaze/[0.12] border border-blaze/30 tabular-nums">
-                        RPE {s.rpe}
-                      </span>
-                    )}
                     {s.warmup && (
                       <ChipTag variant="neutral" className="text-fg/45">
                         Warmup
