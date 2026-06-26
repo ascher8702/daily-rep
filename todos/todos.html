@@ -69,6 +69,7 @@
   <header>
     <h1>Daily Rep — Production Readiness</h1>
     <p class="sub">The remaining go-live checklist. State is saved in this browser (localStorage) — check things off as you go. <span class="saved" id="saved">saved ✓</span></p>
+    <p class="sub" style="color:var(--green)">Already done &amp; removed: 3/4 migrations applied (entitlement gate verified live, both paths), Sentry DSN baked in, support-email fix shipped. Only the cron migration remains — folded into the reconcile task.</p>
   </header>
 
   <div class="progress-wrap">
@@ -94,10 +95,6 @@ const SECTIONS = [
     title: "P0 — Launch blockers (human / infra)", cls: "p0",
     sub: "Must be done before charging real users.",
     tasks: [
-      { id: "p0-migrations", title: "Apply the 5 new migrations to the Supabase project",
-        desc: "<code>supabase db push</code> — entitlement RLS (is_active_subscriber), trial ledger, reconcile cron, analytics-table RLS hardening. They're version-controlled &amp; validated but intentionally not applied yet." },
-      { id: "p0-sentry-dsn", title: "Set NEXT_PUBLIC_SENTRY_DSN in Vercel (Production + Preview)",
-        desc: "Sentry → Settings → Projects → daily-reps → Client Keys (DSN). This alone turns on error tracking." },
       { id: "p0-turnstile", title: "Provision Cloudflare Turnstile + enable Supabase CAPTCHA",
         desc: "Set <code>NEXT_PUBLIC_TURNSTILE_SITE_KEY</code> + the secret in Supabase → Auth → Attack Protection. Code seam already present." },
       { id: "p0-pitr", title: "Enable Point-in-Time Recovery (PITR)",
@@ -116,8 +113,8 @@ const SECTIONS = [
     tasks: [
       { id: "p1-sentry-token", title: "Set SENTRY_AUTH_TOKEN in the build/CI env (source maps)",
         desc: "Sentry → Settings → Auth Tokens (scope project:releases). Gives readable stack traces. Builds pass without it." },
-      { id: "p1-reconcile", title: "Deploy reconcile-subscriptions + set RECONCILE_SECRET + Vault entries",
-        desc: "The missed-webhook safety net. See migration 20260626160000 header for the vault.create_secret calls." },
+      { id: "p1-reconcile", title: "Deploy reconcile-subscriptions + RECONCILE_SECRET + Vault + apply the cron migration",
+        desc: "The missed-webhook safety net. Deploy the function, set RECONCILE_SECRET, add the Vault entries, then apply migration <code>20260626160000</code> (the pg_cron schedule — intentionally held until the function + secret exist). See the migration header for the exact vault.create_secret calls." },
       { id: "p1-webhook-events", title: "Subscribe the Stripe webhook to the expanded event set",
         desc: "checkout.session.completed, customer.subscription.created|updated|deleted|paused|resumed, invoice.paid, invoice.payment_failed, customer.deleted, charge.dispute.created." },
       { id: "p1-site-url", title: "Set NEXT_PUBLIC_SITE_URL = https://daily-rep.app",
@@ -136,10 +133,7 @@ const SECTIONS = [
     tasks: [
       { id: "v-signup", title: "Sign up a throwaway account → trial is active, onboarding works" },
       { id: "v-subscribe", title: "Subscribe → entitlement flips to Pro on /checkout/return within seconds" },
-      { id: "v-entitlement", title: "Lapsed user's cloud write is REJECTED (Postgres 42501)",
-        desc: "Set trial_ends_at in the past for a test user; confirm the sync push is denied. Proves the server-side entitlement gate is live." },
       { id: "v-sentry", title: "Trigger an error → it appears in Sentry → Issues" },
-      { id: "v-support", title: "Support email reads support@daily-rep.app on /privacy and /terms" },
       { id: "v-portal", title: "Billing portal opens; toggle auto-renew reflects back" },
     ],
   },
