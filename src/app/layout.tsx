@@ -64,20 +64,28 @@ export const viewport: Viewport = {
 }
 
 // Applies the saved theme + accent (the full brand ramp) before first paint so there's no
-// light/dark or orange→accent flash. Mirrors accentVars() in lib/theme.ts — keep them in sync.
+// light/dark or brand-colour flash. Mirrors accentVars() in lib/theme.ts — keep them in sync.
+// Each entry: [darkFill, darkHot, darkWarm, darkOn, lightFill, lightOn].
 const noFlashTheme = `(function(){try{
-var A={lime:['190 242 100','77 124 15','24 28 10'],blue:['96 165 250','37 99 235','10 20 40'],violet:['167 139 250','124 58 237','24 16 44'],cyan:['34 211 238','14 116 144','8 26 30'],orange:['255 90 44','194 65 12','26 10 4'],rose:['251 113 133','225 29 72','40 10 16']};
+var A={
+blaze:['255 90 44','255 77 46','255 122 30','26 10 4','194 65 12','255 255 255'],
+lime:['190 242 100','132 204 22','190 242 100','24 28 10','77 124 15','255 255 255'],
+blue:['96 165 250','59 130 246','34 211 238','10 20 40','37 99 235','255 255 255'],
+violet:['167 139 250','139 92 246','217 70 239','24 16 44','124 58 237','255 255 255'],
+cyan:['34 211 238','34 211 238','45 212 191','8 26 30','14 116 144','255 255 255'],
+rose:['251 113 133','244 63 94','236 72 153','40 10 16','225 29 72','255 255 255']};
 var p={};try{p=(JSON.parse(localStorage.getItem('daily-rep-v1'))||{}).state.profile||{}}catch(e){}
 var t=p.theme||'system';var d=t==='dark'||(t!=='light'&&window.matchMedia('(prefers-color-scheme: dark)').matches);
 var r=document.documentElement;r.classList.add(d?'dark':'light');
 function sh(tr,amt){var T=amt>=0?255:0,k=Math.abs(amt);return tr.split(' ').map(function(c){return Math.round(+c+(T-c)*k)}).join(' ')}
-var a=A[p.accent]||A.orange,fill=d?a[0]:a[1],S=r.style;
+var a=A[p.accent]||A.blaze,S=r.style;
+var fill=d?a[0]:a[4];
 S.setProperty('--accent',fill);
 S.setProperty('--color-accent',fill);
-S.setProperty('--color-accent-hot',sh(fill,-0.07));
-S.setProperty('--color-accent-warm',sh(fill,0.13));
+S.setProperty('--color-accent-hot',d?a[1]:sh(a[4],-0.1));
+S.setProperty('--color-accent-warm',d?a[2]:sh(a[4],0.08));
 S.setProperty('--color-accent-label',d?sh(fill,0.32):fill);
-S.setProperty('--color-on-accent',d?a[2]:'255 255 255');
+S.setProperty('--color-on-accent',d?a[3]:a[5]);
 }catch(e){document.documentElement.classList.add('dark')}})()`
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
