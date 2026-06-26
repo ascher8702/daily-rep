@@ -73,6 +73,7 @@ export default function ProfileAppearancePage() {
           <div className="flex flex-wrap gap-3.5">
             {ACCENTS.map((a) => {
               const active = (profile.accent ?? DEFAULT_ACCENT) === a.id
+              const rgb = (t: string) => `rgb(${t.replace(/ /g, ',')})`
               return (
                 <button
                   key={a.id}
@@ -80,7 +81,8 @@ export default function ProfileAppearancePage() {
                   aria-label={a.label}
                   aria-pressed={active}
                   className={`h-8 w-8 rounded-full transition ${active ? 'ring-2 ring-fg ring-offset-2 ring-offset-bg' : ''}`}
-                  style={{ backgroundColor: `rgb(${a.dark.replace(/ /g, ',')})` }}
+                  // swatch previews the accent's two-stop gradient
+                  style={{ backgroundImage: `linear-gradient(135deg, ${rgb(a.hotDark)}, ${rgb(a.warmDark)})` }}
                 />
               )
             })}

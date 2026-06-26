@@ -1,32 +1,37 @@
 import type { Theme } from '../types'
 
-/** An accent: a brand fill per mode (vivid on dark UI, deeper for contrast on light UI) plus the text
- *  colour that sits ON a solid fill of it. The rest of the brand ramp (gradient, label, shadows) is
- *  derived from these in {@link applyAccentVars}. */
+/** An accent: a brand fill per mode plus a two-stop gradient (hot → warm) like the original Blaze, and
+ *  the text colour that sits ON a solid fill of it. Dark-mode gradients are vivid two-hue ramps; the
+ *  light-mode gradient is derived from the (deeper, AA-safe) light fill so on-fill white text stays
+ *  legible. The label colour is derived in {@link accentVars}. */
 export interface AccentDef {
   id: string
   label: string
-  /** brand fill + picker swatch, dark mode ("r g b") */
+  /** solid brand fill, dark mode ("r g b") */
   dark: string
-  /** brand fill + picker swatch, light mode (darkened to clear WCAG AA as text on white) */
+  /** solid brand fill, light mode (deeper, to clear WCAG AA as text + carry white on-fill text) */
   light: string
-  /** text on a solid fill of this accent, dark mode (a near-black tint) */
+  /** dark-mode gradient start (the deeper/hotter end) */
+  hotDark: string
+  /** dark-mode gradient end (the lighter/warmer end) */
+  warmDark: string
+  /** text on a solid fill, dark mode (a near-black tint) */
   onDark: string
-  /** text on a solid fill of this accent, light mode (white) */
+  /** text on a solid fill, light mode (white) */
   onLight: string
 }
 
 export const ACCENTS: AccentDef[] = [
-  { id: 'lime', label: 'Lime', dark: '190 242 100', light: '77 124 15', onDark: '24 28 10', onLight: '255 255 255' },
-  { id: 'blue', label: 'Blue', dark: '96 165 250', light: '37 99 235', onDark: '10 20 40', onLight: '255 255 255' },
-  { id: 'violet', label: 'Violet', dark: '167 139 250', light: '124 58 237', onDark: '24 16 44', onLight: '255 255 255' },
-  { id: 'cyan', label: 'Cyan', dark: '34 211 238', light: '14 116 144', onDark: '8 26 30', onLight: '255 255 255' },
-  // orange = the original Blaze brand fills, so the default look is unchanged
-  { id: 'orange', label: 'Orange', dark: '255 90 44', light: '194 65 12', onDark: '26 10 4', onLight: '255 255 255' },
-  { id: 'rose', label: 'Rose', dark: '251 113 133', light: '225 29 72', onDark: '40 10 16', onLight: '255 255 255' },
+  // Blaze = the original brand orange + its signature red-orange → orange gradient. Default.
+  { id: 'blaze', label: 'Blaze', dark: '255 90 44', light: '194 65 12', hotDark: '255 77 46', warmDark: '255 122 30', onDark: '26 10 4', onLight: '255 255 255' },
+  { id: 'lime', label: 'Lime', dark: '190 242 100', light: '77 124 15', hotDark: '132 204 22', warmDark: '190 242 100', onDark: '24 28 10', onLight: '255 255 255' },
+  { id: 'blue', label: 'Blue', dark: '96 165 250', light: '37 99 235', hotDark: '59 130 246', warmDark: '34 211 238', onDark: '10 20 40', onLight: '255 255 255' },
+  { id: 'violet', label: 'Violet', dark: '167 139 250', light: '124 58 237', hotDark: '139 92 246', warmDark: '217 70 239', onDark: '24 16 44', onLight: '255 255 255' },
+  { id: 'cyan', label: 'Cyan', dark: '34 211 238', light: '14 116 144', hotDark: '34 211 238', warmDark: '45 212 191', onDark: '8 26 30', onLight: '255 255 255' },
+  { id: 'rose', label: 'Rose', dark: '251 113 133', light: '225 29 72', hotDark: '244 63 94', warmDark: '236 72 153', onDark: '40 10 16', onLight: '255 255 255' },
 ]
 
-export const DEFAULT_ACCENT = 'orange'
+export const DEFAULT_ACCENT = 'blaze'
 export const DEFAULT_THEME: Theme = 'system'
 
 export function accentDef(id: string | undefined): AccentDef {
@@ -42,7 +47,7 @@ export function resolveDark(theme: Theme | undefined): boolean {
 }
 
 /** Mix an "r g b" triple toward white (amt > 0) or black (amt < 0) by |amt| in 0..1. */
-function shade(triple: string, amt: number): string {
+export function shade(triple: string, amt: number): string {
   const [r, g, b] = triple.split(/\s+/).map(Number)
   const target = amt >= 0 ? 255 : 0
   const k = Math.min(1, Math.abs(amt))
@@ -58,11 +63,15 @@ function shade(triple: string, amt: number): string {
 export function accentVars(accentId: string | undefined, dark: boolean): Record<string, string> {
   const a = accentDef(accentId)
   const fill = dark ? a.dark : a.light
+  // dark mode uses the accent's bespoke two-hue gradient; light mode keeps both stops deep (derived
+  // from the AA-safe light fill) so white on-fill text stays legible across the whole gradient.
+  const hot = dark ? a.hotDark : shade(fill, -0.1)
+  const warm = dark ? a.warmDark : shade(fill, 0.08)
   return {
     '--accent': fill, // legacy var (focus outline + text-lime/bg-lime utilities)
     '--color-accent': fill, // solid brand fill
-    '--color-accent-hot': shade(fill, -0.07), // gradient start (slightly deeper)
-    '--color-accent-warm': shade(fill, 0.13), // gradient end (slightly lighter)
+    '--color-accent-hot': hot, // gradient start
+    '--color-accent-warm': warm, // gradient end
     // accent-coloured TEXT on surfaces: lighten the fill in dark mode for AA; the light fill is already AA on white
     '--color-accent-label': dark ? shade(fill, 0.32) : fill,
     '--color-on-accent': dark ? a.onDark : a.onLight, // text on a solid fill

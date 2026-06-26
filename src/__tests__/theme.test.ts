@@ -2,47 +2,52 @@ import { describe, it, expect } from 'vitest'
 import { ACCENTS, DEFAULT_ACCENT, accentDef, accentVars } from '../lib/theme'
 
 describe('theme accent → brand', () => {
-  it('defaults the brand to orange (so the out-of-box look is unchanged)', () => {
-    expect(DEFAULT_ACCENT).toBe('orange')
-    expect(accentDef(undefined).id).toBe('orange') // unknown/missing falls back to the default brand
-    expect(accentDef('nope').id).toBe('orange')
+  it('defaults the brand to the original Blaze (so the out-of-box look is unchanged)', () => {
+    expect(DEFAULT_ACCENT).toBe('blaze')
+    expect(accentDef(undefined).id).toBe('blaze') // unknown/missing falls back to the default brand
+    expect(accentDef('nope').id).toBe('blaze')
   })
 
-  it('drives the whole brand ramp from the chosen accent fill (not just --accent)', () => {
-    const orange = ACCENTS.find((a) => a.id === 'orange')!
-    const v = accentVars('orange', true)
-    // the brand fill + legacy accent var both follow the accent
-    expect(v['--accent']).toBe(orange.dark)
-    expect(v['--color-accent']).toBe(orange.dark)
-    expect(v['--color-on-accent']).toBe(orange.onDark)
-    // gradient endpoints are derived (deeper start, lighter end) and differ from the flat fill
-    expect(v['--color-accent-hot']).not.toBe(orange.dark)
-    expect(v['--color-accent-warm']).not.toBe(orange.dark)
-    // dark-mode label is lightened off the fill for AA text on dark surfaces
-    expect(v['--color-accent-label']).not.toBe(orange.dark)
+  it('Blaze reproduces the original red-orange → orange gradient exactly', () => {
+    const v = accentVars('blaze', true)
+    expect(v['--color-accent']).toBe('255 90 44') // #FF5A2C fill
+    expect(v['--color-accent-hot']).toBe('255 77 46') // #FF4D2E
+    expect(v['--color-accent-warm']).toBe('255 122 30') // #FF7A1E
+    expect(v['--color-on-accent']).toBe('26 10 4')
   })
 
-  it('switching the accent changes the brand fill', () => {
-    const blue = ACCENTS.find((a) => a.id === 'blue')!
-    const v = accentVars('blue', true)
-    expect(v['--color-accent']).toBe(blue.dark)
-    expect(v['--color-accent']).not.toBe(ACCENTS.find((a) => a.id === 'orange')!.dark)
-  })
-
-  it('uses the deeper light fill + white on-accent in light mode', () => {
-    const violet = ACCENTS.find((a) => a.id === 'violet')!
-    const v = accentVars('violet', false)
-    expect(v['--color-accent']).toBe(violet.light)
-    expect(v['--color-on-accent']).toBe(violet.onLight)
-    expect(v['--color-on-accent']).toBe('255 255 255')
-    // the light fill is already AA on white, so the label equals it (no extra lightening)
-    expect(v['--color-accent-label']).toBe(violet.light)
-  })
-
-  it('every accent defines a full fill/on pair for both modes', () => {
+  it('every accent has a real two-hue gradient (hot ≠ warm ≠ fill) in dark mode', () => {
     for (const a of ACCENTS) {
-      for (const t of [a.dark, a.light, a.onDark, a.onLight]) {
-        expect(t).toMatch(/^\d{1,3} \d{1,3} \d{1,3}$/) // valid "r g b" triple
+      const v = accentVars(a.id, true)
+      expect(v['--color-accent-hot']).not.toBe(v['--color-accent-warm']) // it's a gradient, not flat
+      expect(v['--color-accent']).toBe(a.dark)
+      expect(v['--color-accent-hot']).toBe(a.hotDark)
+      expect(v['--color-accent-warm']).toBe(a.warmDark)
+    }
+  })
+
+  it('switching the accent changes the brand fill + gradient', () => {
+    const blaze = accentVars('blaze', true)
+    const blue = accentVars('blue', true)
+    expect(blue['--color-accent']).not.toBe(blaze['--color-accent'])
+    expect(blue['--color-accent-hot']).not.toBe(blaze['--color-accent-hot'])
+  })
+
+  it('light mode keeps both gradient stops deep (derived from the AA-safe light fill) + white on-fill text', () => {
+    const v = accentVars('violet', false)
+    const violet = ACCENTS.find((a) => a.id === 'violet')!
+    expect(v['--color-accent']).toBe(violet.light)
+    expect(v['--color-on-accent']).toBe('255 255 255')
+    // both endpoints derive from the deep light fill, not the vivid dark gradient
+    expect(v['--color-accent-hot']).not.toBe(violet.hotDark)
+    expect(v['--color-accent-warm']).not.toBe(violet.warmDark)
+  })
+
+  it('every accent defines valid "r g b" triples for fills, gradient stops and on-fill text', () => {
+    const triple = /^\d{1,3} \d{1,3} \d{1,3}$/
+    for (const a of ACCENTS) {
+      for (const t of [a.dark, a.light, a.hotDark, a.warmDark, a.onDark, a.onLight]) {
+        expect(t).toMatch(triple)
       }
     }
   })
