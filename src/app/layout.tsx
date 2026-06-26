@@ -3,6 +3,7 @@ import { Archivo, Hanken_Grotesk } from 'next/font/google'
 import './globals.css'
 import AppShell from './AppShell'
 import ServiceWorkerRegister from '@/components/ServiceWorkerRegister'
+import GlobalErrorTracker from '@/components/GlobalErrorTracker'
 
 // Charge/Blaze type system — Archivo (display/numerals) + Hanken Grotesk (body/UI). next/font
 // self-hosts both (no runtime network), so the no-flash script + offline PWA behavior are unaffected;
@@ -97,6 +98,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <script dangerouslySetInnerHTML={{ __html: noFlashTheme }} />
       </head>
       <body className="font-sans">
+        <GlobalErrorTracker />
         <ServiceWorkerRegister />
         <AppShell>{children}</AppShell>
       </body>

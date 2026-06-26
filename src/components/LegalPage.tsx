@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { SUPPORT_EMAIL, SUPPORT_MAILTO } from '@/lib/support'
 
 /** Minimal, signed-out-friendly chrome for the public legal pages (privacy / terms). Server component;
  *  the prose styling is applied via descendant selectors so the pages stay plain HTML. Blaze reading view
@@ -44,8 +45,8 @@ export default function LegalPage({
       </div>
       <p className="mt-7 text-[13px] text-fg/40">
         Questions? Contact{' '}
-        <a href="mailto:support@dailyrep.app" className="text-blaze-label underline">
-          support@dailyrep.app
+        <a href={SUPPORT_MAILTO} className="text-blaze-label underline">
+          {SUPPORT_EMAIL}
         </a>
         .
       </p>

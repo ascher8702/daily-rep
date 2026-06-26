@@ -65,7 +65,7 @@ trigger (`security definer`) are the only writers.
 | Price — annual $59.99 | `price_1TmM9lLy7BVo8A056dF3HnGw` |
 | Billing portal config | `bpc_1TmMALLy7BVo8A05wOjpz8I1` (default) |
 | Webhook endpoint | `https://aswwhsxubqyzbrfoptoq.supabase.co/functions/v1/stripe-webhook` |
-| Webhook signing secret | `whsec_S3SDgIa02u6f8CyvwFZWckVQRjfSAs2u` |
+| Webhook signing secret | `whsec_REDACTED_SET_IN_SUPABASE_SECRETS` |
 
 DB migration `subscriptions_table_and_trial` and Edge Functions `create-checkout-session`,
 `create-portal-session`, `set-auto-renew`, `stripe-webhook`, and the updated `delete-account` are deployed.
@@ -86,14 +86,14 @@ startup) and checkout returns an error.
 | Secret | Value |
 | --- | --- |
 | `STRIPE_SECRET_KEY` | your Stripe **test** secret key (`sk_test_…`) |
-| `STRIPE_WEBHOOK_SECRET` | `whsec_S3SDgIa02u6f8CyvwFZWckVQRjfSAs2u` |
+| `STRIPE_WEBHOOK_SECRET` | `whsec_REDACTED_SET_IN_SUPABASE_SECRETS` |
 
 **Or via CLI:**
 
 ```bash
 supabase secrets set \
   STRIPE_SECRET_KEY=sk_test_xxx \
-  STRIPE_WEBHOOK_SECRET=whsec_S3SDgIa02u6f8CyvwFZWckVQRjfSAs2u \
+  STRIPE_WEBHOOK_SECRET=whsec_REDACTED_SET_IN_SUPABASE_SECRETS \
   --project-ref aswwhsxubqyzbrfoptoq
 ```
 
@@ -101,8 +101,12 @@ Supabase auto-injects `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE
 those. `APP_URL` is optional (checkout return URLs fall back to the request Origin, so local dev works
 without it); set it to `https://daily-rep.app` in production for robust return URLs.
 
-> Security note: the test secret key was shared in chat during setup — **roll it** in the Stripe
-> Dashboard (Developers → API keys) and update the `STRIPE_SECRET_KEY` secret with the new value.
+> Security note: the test secret key was shared in chat **and** the test webhook signing secret was
+> previously committed to this file. Both are test-mode, but treat them as compromised: **roll the secret
+> key** (Stripe Dashboard → Developers → API keys) and **roll the webhook signing secret** (Developers →
+> Webhooks → the endpoint → roll signing secret), then update the `STRIPE_SECRET_KEY` /
+> `STRIPE_WEBHOOK_SECRET` Edge Function secrets with the new values. Never paste a real `whsec_`/`sk_`
+> into a tracked file — keep them only in Supabase Edge Function secrets.
 
 ---
 

@@ -82,23 +82,28 @@ Deno.serve(async (req) => {
         customerId = undefined // "No such customer" (deleted / different account) → recreate below
       }
     }
-    const reusedCustomer = !!customerId
     if (!customerId) {
-      const customer = await stripe.customers.create({ email: user.email ?? undefined, metadata: { user_id: uid } })
+      // Idempotency-key the create so a double-tapped checkout (two requests before the row is written)
+      // resolves to ONE Stripe customer instead of orphaning a duplicate. Keyed by uid: a user only ever
+      // has one customer, so retries within Stripe's idempotency window return the same object.
+      const customer = await stripe.customers.create(
+        { email: user.email ?? undefined, metadata: { user_id: uid } },
+        { idempotencyKey: `cust:${uid}` },
+      )
       customerId = customer.id
       await admin
         .from('subscriptions')
         .upsert({ user_id: uid, stripe_customer_id: customerId }, { onConflict: 'user_id' })
     }
 
-    // Authoritative duplicate-subscription guard: the local row is written asynchronously by the
-    // webhook, so a user who just completed one checkout could slip a second one through the fast-path
-    // check above. Ask Stripe directly before creating another subscription on the same customer.
-    if (reusedCustomer) {
-      const subs = await stripe.subscriptions.list({ customer: customerId, status: 'all', limit: 20 })
-      if (subs.data.some((s) => LIVE_STATUSES.includes(s.status))) {
-        return json({ error: 'already_subscribed' }, 409)
-      }
+    // Authoritative duplicate-subscription guard. The local row is written asynchronously by the webhook,
+    // so a user who just completed one checkout could slip a second one through the fast-path check above.
+    // Ask Stripe directly before creating another subscription — ALWAYS, not only when the customer was
+    // reused: a customer created moments earlier (in a racing request) can already have a live sub the
+    // local row doesn't reflect yet. (A brand-new customer simply has none, so this is a cheap no-op.)
+    const subs = await stripe.subscriptions.list({ customer: customerId, status: 'all', limit: 20 })
+    if (subs.data.some((s) => LIVE_STATUSES.includes(s.status))) {
+      return json({ error: 'already_subscribed' }, 409)
     }
 
     // Carry over the remaining app trial, clamped to the trusted signup window so a tampered

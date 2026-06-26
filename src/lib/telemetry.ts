@@ -1,11 +1,19 @@
 /**
  * Central error/telemetry seam. ONE place every catch site + error boundary forwards to, so they don't
- * each need to know the backend. Today it logs to the console in development and deliberately NO-OPS in
- * production (no console noise, no PII leakage). When an error reporter is available, wire it here.
+ * each need to know the backend. In development it logs to the console; in production it forwards to a
+ * registered {@link TelemetrySink} (and stays a silent no-op until one is registered, so no PII leaks and
+ * there's no console noise).
  *
- * TODO(telemetry) [HUMAN]: add a Sentry/PostHog DSN + init (e.g. NEXT_PUBLIC_SENTRY_DSN) and forward in
- * the production branch below — `Sentry.captureException(error, { tags: { scope }, extra: context })`.
- * Keep PII out of `context`.
+ * Wiring a backend is now a one-liner: call {@link registerTelemetrySink} once at app start with an
+ * adapter for your provider, e.g.
+ *
+ *   registerTelemetrySink({
+ *     captureError: (e, ctx) => Sentry.captureException(e, { tags: { scope: ctx?.scope }, extra: ctx }),
+ *     captureEvent: (name, props) => posthog.capture(name, props),
+ *   })
+ *
+ * Keep PII out of `context`/`props`; the adapter is the right place to scrub anything provider-specific.
+ * The DSN/init for the chosen provider remains a [HUMAN] step (NEXT_PUBLIC_SENTRY_DSN etc.).
  */
 
 export interface ErrorContext {
@@ -13,6 +21,20 @@ export interface ErrorContext {
   scope?: string
   /** extra non-PII tags (ids, counts, digests) */
   [key: string]: unknown
+}
+
+/** A pluggable backend for the telemetry seam. Both methods are optional. */
+export interface TelemetrySink {
+  captureError?: (error: unknown, context?: ErrorContext) => void
+  captureEvent?: (name: string, props?: Record<string, unknown>) => void
+}
+
+/** The single active sink, or null when none is wired (the default — seam stays a no-op in prod). */
+let sink: TelemetrySink | null = null
+
+/** Register (or clear, with null) the backend the prod seam forwards to. Idempotent; last wins. */
+export function registerTelemetrySink(next: TelemetrySink | null): void {
+  sink = next
 }
 
 /** Read dynamically (not captured at import) so the prod/dev branch is honoured at call time. */
@@ -28,13 +50,14 @@ export function reportError(error: unknown, context?: ErrorContext): void {
       console.error(`[telemetry]${context?.scope ? ` ${context.scope}:` : ''}`, error, context ?? '')
       return
     }
-    // prod: forward to the error reporter once configured (see TODO above). No-op until then.
+    // prod: forward to the registered reporter (no-op until one is wired via registerTelemetrySink)
+    sink?.captureError?.(error, context)
   } catch {
     /* reporting itself must never throw */
   }
 }
 
-/** Optional product-analytics event seam (no-op until a provider is wired). */
+/** Optional product-analytics event seam (forwards to the sink in prod; no-op until one is wired). */
 export function reportEvent(name: string, props?: Record<string, unknown>): void {
   try {
     if (!isProd()) {
@@ -42,7 +65,8 @@ export function reportEvent(name: string, props?: Record<string, unknown>): void
       console.debug('[telemetry:event]', name, props ?? '')
       return
     }
-    // prod: forward to PostHog/analytics once configured.
+    // prod: forward to PostHog/analytics via the registered sink.
+    sink?.captureEvent?.(name, props)
   } catch {
     /* never throw */
   }

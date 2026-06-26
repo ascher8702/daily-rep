@@ -1,8 +1,11 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { reportError, reportEvent } from '../lib/telemetry'
+import { reportError, reportEvent, registerTelemetrySink } from '../lib/telemetry'
 
 describe('telemetry seam', () => {
-  afterEach(() => vi.unstubAllEnvs())
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    registerTelemetrySink(null) // never leak a sink across tests
+  })
 
   it('reportError logs in development and never throws', () => {
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -35,6 +38,39 @@ describe('telemetry seam', () => {
     vi.stubEnv('NODE_ENV', 'production')
     reportEvent('workout_started')
     expect(spy).not.toHaveBeenCalled()
+    spy.mockRestore()
+  })
+
+  it('forwards to a registered sink in production (so prod no longer ships blind)', () => {
+    vi.stubEnv('NODE_ENV', 'production')
+    const captureError = vi.fn()
+    const captureEvent = vi.fn()
+    registerTelemetrySink({ captureError, captureEvent })
+
+    const err = new Error('boom')
+    reportError(err, { scope: 'unit-test' })
+    reportEvent('workout_started', { plan: 'ppl' })
+
+    expect(captureError).toHaveBeenCalledWith(err, { scope: 'unit-test' })
+    expect(captureEvent).toHaveBeenCalledWith('workout_started', { plan: 'ppl' })
+  })
+
+  it('a throwing sink never propagates out of reportError/reportEvent', () => {
+    vi.stubEnv('NODE_ENV', 'production')
+    registerTelemetrySink({
+      captureError: () => { throw new Error('sink down') },
+      captureEvent: () => { throw new Error('sink down') },
+    })
+    expect(() => reportError(new Error('boom'))).not.toThrow()
+    expect(() => reportEvent('x')).not.toThrow()
+  })
+
+  it('does not forward to the sink in development (keeps dev quiet, avoids double-report)', () => {
+    const captureError = vi.fn()
+    registerTelemetrySink({ captureError })
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    reportError(new Error('boom'))
+    expect(captureError).not.toHaveBeenCalled()
     spy.mockRestore()
   })
 })

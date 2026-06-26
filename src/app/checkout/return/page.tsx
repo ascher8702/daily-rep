@@ -7,8 +7,9 @@ import { PRICING } from '@/lib/billing'
 import { fmtDate } from '@/lib/format'
 import { ProBrand, BlazeCta } from '@/components/billing/shared'
 import { ClockIcon, RefreshIcon, CardIcon } from '@/components/icons'
+import { SUPPORT_MAILTO } from '@/lib/support'
 
-const SUPPORT = 'mailto:support@dailyrep.app'
+const SUPPORT = SUPPORT_MAILTO
 
 function Spinner({ color = '#FF8a4e', track = 'rgba(255,122,30,0.16)' }: { color?: string; track?: string }) {
   return (

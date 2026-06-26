@@ -3,7 +3,12 @@ import { supabase } from '../lib/supabase'
 import { startSync, stopSync } from '../lib/sync'
 import { emailValid, passwordIssue, normalizeEmail } from '../lib/auth'
 import { reportError } from '../lib/telemetry'
+import { settleWithin } from '../lib/async'
 import { useStore } from './useStore'
+
+/** If the auth session bootstrap hasn't resolved in this long, proceed as signed-out rather than
+ *  leaving the user stuck on the loading skeleton; a late success still wires email + sync. */
+const SESSION_BOOTSTRAP_TIMEOUT_MS = 8000
 
 /**
  * Auth + cloud session, backed by Supabase Auth. An account is REQUIRED to use the app (it's a paid
@@ -72,10 +77,24 @@ export const useAuth = create<AuthState>((set) => ({
       return
     }
 
-    supabase.auth.getSession().then(({ data }) => {
-      const u = data.session?.user
-      set({ email: u?.email ?? null, initialized: true })
-      if (u) void startSync(u.id)
+    // Guard the bootstrap: a hung token refresh (offline, Supabase outage) would otherwise never
+    // resolve, leaving the gate stuck on the skeleton forever. settleWithin flips `initialized` after a
+    // timeout so the app falls through to the sign-in screen; a slow-but-successful session that lands
+    // afterwards still wires email + sync. A hard failure is reported and treated as signed-out.
+    settleWithin(supabase.auth.getSession(), SESSION_BOOTSTRAP_TIMEOUT_MS, {
+      onValue: ({ data }) => {
+        const u = data.session?.user
+        set({ email: u?.email ?? null, initialized: true })
+        if (u) void startSync(u.id)
+      },
+      onError: (e) => {
+        reportError(e, { scope: 'auth.getSession' })
+        set({ initialized: true })
+      },
+      onTimeout: () => {
+        reportError(new Error('auth getSession timed out'), { scope: 'auth.getSession.timeout' })
+        set({ initialized: true })
+      },
     })
 
     supabase.auth.onAuthStateChange((event, session) => {
