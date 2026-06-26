@@ -139,22 +139,24 @@ export default function ExerciseDetailPage() {
     <div className="min-h-screen flex flex-col animate-fade-in">
       {/* header */}
       <header className="sticky top-0 z-30 safe-top bg-bg/[0.86] backdrop-blur-md border-b border-hairline/10">
-        <div className="px-4 pt-3 pb-3 flex items-center gap-2">
+        {/* 1fr / auto / 1fr keeps the title at the true center — the side columns stay equal width
+            even though the "Workout" back button is wider than the right-hand done indicator. */}
+        <div className="px-4 pt-3 pb-3 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
           <button
             onClick={() => router.push('/session')}
             aria-label="Back to workout"
-            className="shrink-0 inline-flex items-center gap-1 text-sm text-fg/60 active:text-fg pr-1"
+            className="justify-self-start inline-flex items-center gap-1 text-sm text-fg/60 active:text-fg pr-1"
           >
             <ChevronLeft size={20} /> Workout
           </button>
-          <div className="flex-1 min-w-0 text-center px-2">
+          <div className="min-w-0 text-center px-2">
             <div className="font-black uppercase tracking-[-0.01em] truncate leading-tight">{name}</div>
             <div className="text-[11px] text-fg/45 tabular-nums">
               {doneWorking}/{totalWorking} sets · {we.targetReps[0]}–{we.targetReps[1]} reps
               {perSideLabel(ex) ? ` · ${perSideLabel(ex)}` : ''}
             </div>
           </div>
-          <div className="shrink-0 w-9 flex justify-end">
+          <div className="justify-self-end w-9 flex justify-end">
             {allDone && (
               <span className="grid place-items-center h-7 w-7 rounded-full bg-recovery-fresh text-bg">
                 <CheckIcon size={16} strokeWidth={3} />
