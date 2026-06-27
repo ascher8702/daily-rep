@@ -109,19 +109,22 @@ export default function Onboarding() {
   const [focus, setFocus] = useState<MuscleGroup[]>([])
   const [avoid, setAvoid] = useState<MuscleGroup[]>([])
   const [sessionLength, setSessionLength] = useState(50)
+  // step 5 has two distinct intents; a mode toggle keeps each one direct (no hidden tap-cycle) so
+  // flagging an injury never first lights the muscle up as "emphasize"
+  const [muscleMode, setMuscleMode] = useState<'emphasize' | 'avoid'>('emphasize')
 
   const toggleEquip = (e: Equipment) =>
     setEquipment((prev) => (prev.includes(e) ? prev.filter((x) => x !== e) : [...prev, e]))
 
-  // tri-state muscle chip: neutral → emphasize → avoid → neutral
-  const cycleMuscle = (m: MuscleGroup) => {
-    if (focus.includes(m)) {
-      setFocus((p) => p.filter((x) => x !== m))
-      setAvoid((p) => [...p, m])
-    } else if (avoid.includes(m)) {
+  // apply the active mode to a muscle. emphasize and avoid are mutually exclusive, so picking one
+  // clears the other; tapping a muscle already in the active mode clears it.
+  const applyMuscleMode = (m: MuscleGroup) => {
+    if (muscleMode === 'emphasize') {
+      setFocus((p) => (p.includes(m) ? p.filter((x) => x !== m) : [...p, m]))
       setAvoid((p) => p.filter((x) => x !== m))
     } else {
-      setFocus((p) => [...p, m])
+      setAvoid((p) => (p.includes(m) ? p.filter((x) => x !== m) : [...p, m]))
+      setFocus((p) => p.filter((x) => x !== m))
     }
   }
 
@@ -413,18 +416,45 @@ export default function Onboarding() {
         )}
 
         {step === 5 && (
-          <Section title="Emphasize or avoid any muscles?" sub="Optional. Tap once to emphasize, again to avoid.">
-            {/* Spell out the tri-state taps so the hidden 'avoid' step is discoverable before a
-                second tap reveals it. The arrow reinforces the neutral → emphasize → avoid cycle. */}
-            <div className="flex items-center gap-3 mb-3 text-xs text-fg/50">
-              <span className="inline-flex items-center gap-1.5">
-                <span className="h-2.5 w-2.5 rounded-full bg-blaze" /> 1 tap · Emphasize
-              </span>
-              <ChevronRight size={12} className="text-fg/30 shrink-0" />
-              <span className="inline-flex items-center gap-1.5">
-                <span className="h-2.5 w-2.5 rounded-full bg-rose-400" /> 2 taps · Avoid
-              </span>
+          <Section
+            title="Emphasize or work around any areas?"
+            sub="Optional — set priorities, or flag an injury or sore spot to train around."
+          >
+            {/* Two clear intents via a mode toggle, so flagging an injury is direct rather than a
+                hidden second tap that first lights the muscle up as "emphasize". */}
+            <div
+              className="grid grid-cols-2 gap-1 p-1 rounded-xl bg-card border border-hairline/[0.08]"
+              role="tablist"
+              aria-label="Muscle preference mode"
+            >
+              <button
+                role="tab"
+                aria-selected={muscleMode === 'emphasize'}
+                onClick={() => setMuscleMode('emphasize')}
+                className={`inline-flex items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-bold transition ${
+                  muscleMode === 'emphasize' ? 'bg-blaze/15 text-blaze-label' : 'text-fg/55 active:text-fg/80'
+                }`}
+              >
+                <ArrowUpGlyph /> Emphasize
+              </button>
+              <button
+                role="tab"
+                aria-selected={muscleMode === 'avoid'}
+                onClick={() => setMuscleMode('avoid')}
+                className={`inline-flex items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-bold transition ${
+                  muscleMode === 'avoid' ? 'bg-rose-400/15 text-rose-300' : 'text-fg/55 active:text-fg/80'
+                }`}
+              >
+                <BanGlyph /> Working around
+              </button>
             </div>
+
+            <p className="mt-2.5 text-xs leading-snug text-fg/45 min-h-[2.5em]">
+              {muscleMode === 'emphasize'
+                ? 'Tap muscles to give them extra priority — we’ll program a little more for them.'
+                : 'Tap an injured or sore area — we’ll skip exercises that mainly target it.'}
+            </p>
+
             <div className="grid grid-cols-2 gap-2">
               {ALL_MUSCLES.map((m) => {
                 const emphasized = focus.includes(m)
@@ -432,21 +462,40 @@ export default function Onboarding() {
                 return (
                   <button
                     key={m}
-                    onClick={() => cycleMuscle(m)}
+                    onClick={() => applyMuscleMode(m)}
                     aria-pressed={emphasized || avoided}
-                    className={`rounded-xl py-3 px-3 text-sm font-bold border text-left transition ${
+                    aria-label={`${MUSCLES[m].label}${emphasized ? ', emphasized' : avoided ? ', working around' : ''}`}
+                    className={`inline-flex items-center gap-1.5 rounded-xl py-3 px-3 text-sm font-bold border text-left transition ${
                       emphasized
                         ? 'border-blaze/40 bg-blaze/10 text-blaze-label'
                         : avoided
-                          ? 'border-rose-400/60 bg-rose-400/10 text-rose-300 line-through decoration-rose-400/50'
+                          ? 'border-rose-400/60 bg-rose-400/10 text-rose-300'
                           : 'border-hairline/[0.08] bg-card text-fg/80'
                     }`}
                   >
+                    <span className="shrink-0">
+                      {emphasized ? <ArrowUpGlyph /> : avoided ? <BanGlyph /> : null}
+                    </span>
                     {MUSCLES[m].label}
                   </button>
                 )
               })}
             </div>
+
+            {(focus.length > 0 || avoid.length > 0) && (
+              <div className="mt-3.5 flex flex-wrap gap-1.5">
+                {focus.length > 0 && (
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-blaze/10 px-2.5 py-1 text-xs font-semibold text-blaze-label">
+                    <ArrowUpGlyph /> Emphasizing {focus.length}
+                  </span>
+                )}
+                {avoid.length > 0 && (
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-400/10 px-2.5 py-1 text-xs font-semibold text-rose-300">
+                    <BanGlyph /> Working around {avoid.length}
+                  </span>
+                )}
+              </div>
+            )}
           </Section>
         )}
 
@@ -472,7 +521,12 @@ export default function Onboarding() {
               {(focus.length > 0 || avoid.length > 0) && (
                 <SummaryRow
                   label="Muscles"
-                  value={[focus.length ? `↑ ${focus.length}` : '', avoid.length ? `✕ ${avoid.length}` : ''].filter(Boolean).join(' · ')}
+                  value={[
+                    focus.length ? `↑ ${focus.length} emphasized` : '',
+                    avoid.length ? `⊘ ${avoid.length} working around` : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')}
                   onEdit={() => setStep(5)}
                 />
               )}
@@ -543,5 +597,24 @@ function Section({ title, sub, children }: { title: string; sub?: string; childr
       {sub && <p className="text-fg/50 mt-2.5 text-[15px]">{sub}</p>}
       <div className="mt-6">{children}</div>
     </div>
+  )
+}
+
+/** Up-arrow — the "emphasize / extra priority" cue for the muscle step. */
+function ArrowUpGlyph() {
+  return (
+    <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M12 19V5M6 11l6-6 6 6" />
+    </svg>
+  )
+}
+
+/** No-entry circle — the "working around / avoid" cue for the muscle step. */
+function BanGlyph() {
+  return (
+    <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M5.6 5.6l12.8 12.8" />
+    </svg>
   )
 }
