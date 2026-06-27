@@ -5,7 +5,7 @@
 # To stand up a fresh, dedicated project (cutover off the old shared one), run
 # scripts/provision-dedicated-project.sh and set project_id below to the new ref (or `supabase link` sets it).
 
-project_id = "aswwhsxubqyzbrfoptoq"
+project_id = "clobxwwcjlmyckvkongk"
 
 # Stripe webhook is public — Stripe can't send a Supabase JWT; it authenticates via signature
 # verification against STRIPE_WEBHOOK_SECRET inside the function.
