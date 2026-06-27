@@ -54,8 +54,8 @@ export interface AppState {
   current: Workout | null // the planned / active session
   restEndsAt: number | null // epoch ms for the running rest timer
   restDuration: number // seconds the current rest was set to
-  // session id whose "working around" alert the user dismissed (transient: not persisted, so it
-  // resets on reload but stays dismissed while the app is open — won't nag within a session)
+  // session id whose "working around" alert the user dismissed — persisted (keyed by session id) so a
+  // reload keeps it dismissed, while a different session still gets its own heads-up
   avoidNoticeDismissedId: string | null
   activePlan: ActivePlan | null // the structured plan the user is following
   customPlans: WorkoutPlan[] // user-created plans
@@ -1484,6 +1484,9 @@ export const useStore = create<AppState>()(
         planProgress: s.planProgress,
         planOverrides: s.planOverrides,
         planDayEdits: s.planDayEdits,
+        // keep a dismissed "working around" alert dismissed across a reload too (it's keyed by the
+        // session id, so a different session still gets its own heads-up) — friendlier than re-nagging
+        avoidNoticeDismissedId: s.avoidNoticeDismissedId,
       }),
       // Defensively merge persisted state over defaults so a corrupt/older/partial
       // blob can't hydrate with the wrong shapes and crash the app (no array, etc.).
