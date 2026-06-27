@@ -37,6 +37,7 @@ BEGIN
 END;
 $$;
 
+DROP TRIGGER IF EXISTS daily_rep_state_touch ON public.daily_rep_state;
 CREATE TRIGGER daily_rep_state_touch
   BEFORE UPDATE ON public.daily_rep_state
   FOR EACH ROW EXECUTE FUNCTION public.daily_rep_touch_updated_at();
