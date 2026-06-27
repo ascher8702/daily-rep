@@ -1,5 +1,3 @@
-// TODO(legal): have counsel review and fill the [bracketed] placeholders (legal entity, contact
-// email, jurisdiction, age threshold) before charging or submitting to the app stores.
 import type { Metadata } from 'next'
 import LegalPage from '@/components/LegalPage'
 
@@ -13,7 +11,8 @@ export default function PrivacyPolicyPage() {
   return (
     <LegalPage title="Privacy Policy" updated="June 24, 2026">
       <p>
-        This Privacy Policy explains how <strong>Daily Rep</strong> ([Legal Entity]) collects, uses, and
+        This Privacy Policy explains how <strong>Daily Rep</strong> (operated by Vladislav Tsoy) collects,
+        uses, and
         protects your information when you use the app. Daily Rep is offline-first: your data lives on your
         device and is synced to our cloud so you can use it across devices.
       </p>
@@ -103,7 +102,7 @@ export default function PrivacyPolicyPage() {
 
       <h2>Children</h2>
       <p>
-        Daily Rep is not directed to children under [13/16], and we do not knowingly collect their personal
+        Daily Rep is not directed to children under 18, and we do not knowingly collect their personal
         data.
       </p>
 

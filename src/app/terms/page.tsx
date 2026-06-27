@@ -1,5 +1,3 @@
-// TODO(legal): have counsel review and fill the [bracketed] placeholders (legal entity, jurisdiction,
-// age threshold, billing/refund terms, contact email) before charging or submitting to the app stores.
 import type { Metadata } from 'next'
 import LegalPage from '@/components/LegalPage'
 
@@ -13,7 +11,8 @@ export default function TermsOfServicePage() {
   return (
     <LegalPage title="Terms of Service" updated="June 24, 2026">
       <p>
-        These Terms of Service (“Terms”) govern your use of <strong>Daily Rep</strong> ([Legal Entity]) (the
+        These Terms of Service (“Terms”) govern your use of <strong>Daily Rep</strong> (operated by Vladislav
+        Tsoy) (the
         “Service”). By creating an account or using the Service, you agree to these Terms and to our{' '}
         <a href="/privacy">Privacy Policy</a>.
       </p>
@@ -29,7 +28,7 @@ export default function TermsOfServicePage() {
 
       <h2>Your account</h2>
       <ul>
-        <li>You must be at least [16] years old to use the Service.</li>
+        <li>You must be at least 18 years old to use the Service.</li>
         <li>
           You are responsible for keeping your credentials secure and for activity under your account. One
           account per person.
@@ -45,15 +44,21 @@ export default function TermsOfServicePage() {
 
       <h2>Subscriptions &amp; payments</h2>
       <p>
-        [If and when paid plans are offered: describe pricing, the billing cycle, automatic renewal, how to
-        cancel, and the refund policy. Purchases made through the Apple App Store or Google Play are also
-        subject to those stores’ terms.]
+        Daily Rep offers an optional paid subscription. Pricing is{' '}
+        <strong>$7.99 per month</strong> or <strong>$59.99 per year</strong>, and new subscribers may be
+        offered a <strong>30-day free trial</strong>. Subscriptions <strong>renew automatically</strong> at
+        the end of each billing period unless you cancel beforehand. You can cancel at any time through the
+        billing portal (Settings → Manage subscription); cancellation takes effect at the end of the current
+        period, and you keep access until then. Except where required by law, payments are{' '}
+        <strong>non-refundable</strong> and we do not provide refunds or credits for partial periods.
+        Purchases made through the Apple App Store or Google Play are billed and managed by those stores and
+        are also subject to their terms and refund policies.
       </p>
 
       <h2>Your content &amp; our content</h2>
       <p>
         Your training data is yours. The Service itself — including its software, design, exercise library,
-        and content — is owned by [Legal Entity] and protected by intellectual-property laws. We grant you a
+        and content — is owned by Vladislav Tsoy and protected by intellectual-property laws. We grant you a
         personal, non-transferable license to use the Service.
       </p>
 
@@ -65,7 +70,7 @@ export default function TermsOfServicePage() {
 
       <h2>Limitation of liability</h2>
       <p>
-        To the maximum extent permitted by law, [Legal Entity] is not liable for any indirect, incidental, or
+        To the maximum extent permitted by law, Vladislav Tsoy is not liable for any indirect, incidental, or
         consequential damages, or for injury arising from your use of the Service.
       </p>
 
@@ -82,7 +87,10 @@ export default function TermsOfServicePage() {
       </p>
 
       <h2>Governing law</h2>
-      <p>These Terms are governed by the laws of [Jurisdiction], without regard to conflict-of-laws rules.</p>
+      <p>
+        These Terms are governed by the laws of the State of New Jersey, United States, without regard to
+        conflict-of-laws rules.
+      </p>
     </LegalPage>
   )
 }
