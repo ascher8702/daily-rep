@@ -41,6 +41,8 @@ export default function TrainingPreferencesPage() {
   const setUnit = useStore((s) => s.setUnit)
   const toggleEquipment = useStore((s) => s.toggleEquipment)
   const toggleFocusMuscle = useStore((s) => s.toggleFocusMuscle)
+  const toggleAvoidMuscle = useStore((s) => s.toggleAvoidMuscle)
+  const avoidMuscles = profile.avoidMuscles ?? []
 
   return (
     <div className="bg-bg min-h-[100dvh] text-fg animate-fade-in">
@@ -130,6 +132,34 @@ export default function TrainingPreferencesPage() {
               <Chip key={m} active={profile.focusMuscles.includes(m)} onClick={() => toggleFocusMuscle(m)}>{MUSCLES[m].label}</Chip>
             ))}
           </div>
+          <p className="text-[11px] text-fg/40 mt-2">We’ll give these muscles a little extra priority.</p>
+        </section>
+
+        <section>
+          <SectionLabel className="mb-2.5">Working around</SectionLabel>
+          <div className="flex flex-wrap gap-2">
+            {ALL_MUSCLES.map((m: MuscleGroup) => {
+              const active = avoidMuscles.includes(m)
+              return (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => toggleAvoidMuscle(m)}
+                  aria-pressed={active}
+                  className={`text-[13px] rounded-full px-3.5 py-2.5 border transition ${
+                    active
+                      ? 'font-extrabold text-rose-300 bg-rose-400/[0.12] border-rose-400/50'
+                      : 'font-semibold text-fg/65 bg-raised border-hairline/[0.06]'
+                  }`}
+                >
+                  {MUSCLES[m].label}
+                </button>
+              )
+            })}
+          </div>
+          <p className="text-[11px] text-fg/40 mt-2">
+            Injured or sore? Auto-built workouts skip exercises that mainly target these. Not medical advice — train safely.
+          </p>
         </section>
       </div>
     </div>

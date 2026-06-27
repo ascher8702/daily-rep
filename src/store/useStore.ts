@@ -79,6 +79,8 @@ export interface AppState {
   setUnit: (u: Unit) => void
   toggleEquipment: (e: Equipment) => void
   toggleFocusMuscle: (m: MuscleGroup) => void
+  /** toggle a muscle the user is "working around" (injury/soreness); mutually exclusive with focus */
+  toggleAvoidMuscle: (m: MuscleGroup) => void
 
   // ---- generation / session lifecycle ----
   generate: (opts?: GenerateOptions) => void
@@ -695,7 +697,19 @@ export const useStore = create<AppState>()(
           const focusMuscles = has
             ? s.profile.focusMuscles.filter((x) => x !== m)
             : [...s.profile.focusMuscles, m]
-          return { profile: { ...s.profile, focusMuscles } }
+          // emphasizing a muscle clears it from "working around" — the two intents are exclusive
+          const avoidMuscles = has ? s.profile.avoidMuscles : (s.profile.avoidMuscles ?? []).filter((x) => x !== m)
+          return { profile: { ...s.profile, focusMuscles, avoidMuscles } }
+        }),
+
+      toggleAvoidMuscle: (m) =>
+        set((s) => {
+          const avoid = s.profile.avoidMuscles ?? []
+          const has = avoid.includes(m)
+          const avoidMuscles = has ? avoid.filter((x) => x !== m) : [...avoid, m]
+          // working around a muscle clears it from "emphasize" — the two intents are exclusive
+          const focusMuscles = has ? s.profile.focusMuscles : s.profile.focusMuscles.filter((x) => x !== m)
+          return { profile: { ...s.profile, avoidMuscles, focusMuscles } }
         }),
 
       generate: (opts) => {

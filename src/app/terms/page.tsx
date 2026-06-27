@@ -9,7 +9,7 @@ export const metadata: Metadata = {
 
 export default function TermsOfServicePage() {
   return (
-    <LegalPage title="Terms of Service" updated="June 24, 2026">
+    <LegalPage title="Terms of Service" updated="June 27, 2026">
       <p>
         These Terms of Service (“Terms”) govern your use of <strong>Daily Rep</strong> (operated by Vladislav
         Tsoy) (the
@@ -20,10 +20,32 @@ export default function TermsOfServicePage() {
       <h2>Health &amp; safety disclaimer</h2>
       <p>
         Daily Rep provides general fitness information and tracking tools and is{' '}
-        <strong>not a substitute for professional medical or fitness advice</strong>. Estimated values (such
-        as estimated 1-rep max and recovery) are approximations, not measurements. Consult a qualified
-        professional before starting any exercise program. You exercise at your own risk and are responsible
-        for training safely; stop and seek help if you feel unwell or experience pain.
+        <strong>not a substitute for professional medical or fitness advice, diagnosis, or treatment</strong>.
+        Estimated values (such as estimated 1-rep max and recovery) are approximations, not measurements.
+        Consult a qualified physician or licensed professional before starting, changing, or continuing any
+        exercise program — especially if you have or may have an injury, illness, or other condition, or are
+        pregnant. <strong>You exercise at your own risk.</strong> You are solely responsible for using proper
+        form, selecting appropriate weights, and training safely; stop immediately and seek medical help if you
+        feel unwell, dizzy, or experience pain.
+      </p>
+      <p>
+        Features such as recovery estimates, generated workouts, training plans, exercise substitutions, and
+        the “emphasize / working around” muscle preferences are{' '}
+        <strong>conveniences based on the information you provide, not medical guidance</strong>. They do not
+        detect, prevent, diagnose, or treat any injury or condition, and marking an area to “work around” does
+        not guarantee that a workout, plan, or recommendation will avoid loading or aggravating it. Always use
+        your own judgment and a professional’s advice over anything the Service suggests.
+      </p>
+
+      <h2>Assumption of risk &amp; release</h2>
+      <p>
+        Physical exercise carries inherent risks, including muscle strains, sprains, fractures, cardiac events,
+        other serious injury, permanent disability, or death. By using the Service, you{' '}
+        <strong>knowingly and voluntarily assume all risks</strong> associated with exercise and with following
+        any information, workout, plan, or recommendation provided through the Service. To the maximum extent
+        permitted by law, you <strong>release, waive, and hold harmless</strong> Vladislav Tsoy from any and
+        all claims, demands, liabilities, or damages of any kind arising out of or related to your use of the
+        Service or any injury, loss, or harm you may suffer, whether or not caused by negligence.
       </p>
 
       <h2>Your account</h2>
@@ -70,8 +92,16 @@ export default function TermsOfServicePage() {
 
       <h2>Limitation of liability</h2>
       <p>
-        To the maximum extent permitted by law, Vladislav Tsoy is not liable for any indirect, incidental, or
-        consequential damages, or for injury arising from your use of the Service.
+        To the maximum extent permitted by law, Vladislav Tsoy is{' '}
+        <strong>not liable for any personal injury, death, or property damage</strong>, nor for any indirect,
+        incidental, special, consequential, or punitive damages, arising out of or related to your use of the
+        Service — including injuries connected to any exercise, weight, workout, training plan, exercise
+        substitution, recovery estimate, or other recommendation generated or provided by the Service, and
+        including any failure of the “working around” / injury-avoidance preferences to exclude a given
+        movement. This applies regardless of the legal theory and even if we have been advised of the
+        possibility of such damages. Where liability cannot be excluded, it is limited to the greater of the
+        amount you paid for the Service in the 12 months before the claim or US$50. Some jurisdictions do not
+        allow certain exclusions, so some of the above may not apply to you.
       </p>
 
       <h2>Termination</h2>
