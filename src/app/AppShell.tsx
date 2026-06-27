@@ -168,8 +168,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const isSession = pathname === '/session' || pathname.startsWith('/session/')
   // full-screen, chrome-less app routes (manage their own height + safe areas). Settings SUBpages
   // (/settings/*) are pushed views with a back chevron — the hub at /settings keeps the tab bar.
+  // The plan builder has its OWN fixed bottom "Save plan" bar; keeping the tab bar would overlay it
+  // (the nav out-stacks the no-z save bar) and make Save untappable, so treat it as full-screen too.
   const hideChrome =
-    isSession || pathname === '/subscribe' || pathname === '/checkout/return' || pathname.startsWith('/settings/')
+    isSession ||
+    pathname === '/subscribe' ||
+    pathname === '/checkout/return' ||
+    pathname === '/plans/builder' ||
+    pathname.startsWith('/settings/')
 
   return (
     <ErrorBoundary>

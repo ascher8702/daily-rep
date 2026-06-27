@@ -24,6 +24,11 @@ import { PlayIcon, PlusIcon, RefreshIcon, FlameIcon, TargetIcon, ChevronRight } 
 
 const DAY = 1000 * 60 * 60 * 24
 
+// Monotonic seed for free re-rolls ("Build", "Rebuild", "New workout", "Target muscles"). Module-scoped
+// (not component state) so it survives HomeScreen unmount/remount across navigation — otherwise every
+// rebuild would reuse seed 1 and return the same workout. The generator's jitter is keyed on `shuffle`.
+let freeBuildSeed = 0
+
 function greeting(now: number): string {
   const h = new Date(now).getHours()
   if (h < 12) return 'Good morning'
@@ -220,7 +225,7 @@ export default function HomeScreen() {
       )
         return
     }
-    generate(override ? { focusOverride: override } : undefined)
+    generate({ ...(override ? { focusOverride: override } : {}), shuffle: ++freeBuildSeed })
     router.push('/session')
   }
 

@@ -73,6 +73,7 @@ export function BlazeHeroCard({
           {onSwitch && (
             <button
               onClick={onSwitch}
+              aria-label="Switch workout"
               className="shrink-0 rounded-lg bg-black/[0.14] px-2.5 py-1.5 text-[11px] font-extrabold uppercase tracking-[0.04em] text-on-accent transition active:scale-95"
             >
               {switchLabel}
