@@ -16,7 +16,7 @@
 -- authenticated-scoped RLS, touch trigger, column docs) baked in.
 
 
-CREATE TABLE public.daily_rep_state (
+CREATE TABLE IF NOT EXISTS public.daily_rep_state (
   user_id           uuid        NOT NULL PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   data              jsonb       NOT NULL DEFAULT '{}'::jsonb,
   client_updated_at timestamptz DEFAULT now(),
@@ -43,12 +43,16 @@ CREATE TRIGGER daily_rep_state_touch
 
 ALTER TABLE public.daily_rep_state ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS daily_rep_state_select_own ON public.daily_rep_state;
 CREATE POLICY daily_rep_state_select_own ON public.daily_rep_state
   FOR SELECT TO authenticated USING ((SELECT auth.uid()) = user_id);
+DROP POLICY IF EXISTS daily_rep_state_insert_own ON public.daily_rep_state;
 CREATE POLICY daily_rep_state_insert_own ON public.daily_rep_state
   FOR INSERT TO authenticated WITH CHECK ((SELECT auth.uid()) = user_id);
+DROP POLICY IF EXISTS daily_rep_state_update_own ON public.daily_rep_state;
 CREATE POLICY daily_rep_state_update_own ON public.daily_rep_state
   FOR UPDATE TO authenticated USING ((SELECT auth.uid()) = user_id) WITH CHECK ((SELECT auth.uid()) = user_id);
+DROP POLICY IF EXISTS daily_rep_state_delete_own ON public.daily_rep_state;
 CREATE POLICY daily_rep_state_delete_own ON public.daily_rep_state
   FOR DELETE TO authenticated USING ((SELECT auth.uid()) = user_id);
 
@@ -86,6 +90,7 @@ ALTER TABLE public.plans ENABLE ROW LEVEL SECURITY;
 
 -- Public catalogue: read-only for everyone (anon + signed-in). No write policies → RLS denies all
 -- client writes; plans are managed via the dashboard / service-role (which bypasses RLS).
+DROP POLICY IF EXISTS plans_read_all ON public.plans;
 DROP POLICY IF EXISTS plans_read_all ON public.plans;
 CREATE POLICY plans_read_all ON public.plans
   FOR SELECT TO anon, authenticated
@@ -150,20 +155,20 @@ CREATE SCHEMA IF NOT EXISTS analytics AUTHORIZATION postgres;
 REVOKE ALL ON SCHEMA analytics FROM PUBLIC;
 GRANT USAGE ON SCHEMA analytics TO service_role;
 
-CREATE TABLE analytics.meta (
+CREATE TABLE IF NOT EXISTS analytics.meta (
   id             smallint PRIMARY KEY DEFAULT 1 CHECK (id = 1),
   schema_version integer  NOT NULL DEFAULT 1,   -- bump on formula change OR exercise_facts reseed → re-derive all
   facts_version  integer  NOT NULL DEFAULT 1
 );
 INSERT INTO analytics.meta (id) VALUES (1) ON CONFLICT DO NOTHING;
 
-CREATE TABLE analytics.reconcile_queue (
+CREATE TABLE IF NOT EXISTS analytics.reconcile_queue (
   user_id     uuid PRIMARY KEY,
   enqueued_at timestamptz NOT NULL DEFAULT now()
 );
-CREATE INDEX queue_enqueued_idx ON analytics.reconcile_queue (enqueued_at);
+CREATE INDEX IF NOT EXISTS queue_enqueued_idx ON analytics.reconcile_queue (enqueued_at);
 
-CREATE TABLE analytics.user_watermark (
+CREATE TABLE IF NOT EXISTS analytics.user_watermark (
   user_id              uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   last_blob_updated_at timestamptz,   -- SERVER daily_rep_state.updated_at last reconciled (monotonic, skew-proof)
   last_reconciled_at   timestamptz,
@@ -174,7 +179,12 @@ CREATE TABLE analytics.user_watermark (
 
 REVOKE ALL ON ALL TABLES IN SCHEMA analytics FROM anon, authenticated;
 
-CREATE TYPE analytics.reconcile_result AS (sessions int, sets int, deleted int);
+DO $do_rr$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid=t.typnamespace
+                 WHERE n.nspname='analytics' AND t.typname='reconcile_result') THEN
+    CREATE TYPE analytics.reconcile_result AS (sessions int, sets int, deleted int);
+  END IF;
+END $do_rr$;
 
 -- ---------------------------------------------------------------------------
 -- 20260624042226_analytics_b_projection_tables
@@ -184,7 +194,7 @@ CREATE TYPE analytics.reconcile_result AS (sessions int, sets int, deleted int);
 -- SECURITY DEFINER extractor (next migration), so client write-forgery is structurally impossible.
 
 -- catalogue-derived facts (is_bodyweight_lift, regions) — seeded mechanically; client write forbidden
-CREATE TABLE public.exercise_facts (
+CREATE TABLE IF NOT EXISTS public.exercise_facts (
   exercise_id        text PRIMARY KEY,
   is_bodyweight_lift boolean NOT NULL DEFAULT false,
   regions            text[]  NOT NULL DEFAULT '{}'
@@ -193,10 +203,11 @@ ALTER TABLE public.exercise_facts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.exercise_facts FORCE  ROW LEVEL SECURITY;
 REVOKE ALL    ON public.exercise_facts FROM anon, authenticated;
 GRANT  SELECT ON public.exercise_facts TO authenticated;
+DROP POLICY IF EXISTS exercise_facts_read ON public.exercise_facts;
 CREATE POLICY exercise_facts_read ON public.exercise_facts FOR SELECT TO authenticated USING (true);
 
 -- grain = one COMPLETED Workout; pre-aggregated working totals
-CREATE TABLE public.analytics_sessions (
+CREATE TABLE IF NOT EXISTS public.analytics_sessions (
   user_id           uuid        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   session_id        text        NOT NULL,
   performed_at      timestamptz NOT NULL,
@@ -229,10 +240,11 @@ ALTER TABLE public.analytics_sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.analytics_sessions FORCE  ROW LEVEL SECURITY;
 REVOKE ALL    ON public.analytics_sessions FROM anon, authenticated;
 GRANT  SELECT ON public.analytics_sessions TO authenticated;
+DROP POLICY IF EXISTS sess_read ON public.analytics_sessions;
 CREATE POLICY sess_read ON public.analytics_sessions FOR SELECT TO authenticated USING ((select auth.uid()) = user_id);
 
 -- grain = one LoggedSet; flattened exercise context + extractor-computed derived columns
-CREATE TABLE public.analytics_session_sets (
+CREATE TABLE IF NOT EXISTS public.analytics_session_sets (
   user_id            uuid        NOT NULL,
   session_id         text        NOT NULL,
   set_id             text        NOT NULL,
@@ -270,10 +282,11 @@ ALTER TABLE public.analytics_session_sets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.analytics_session_sets FORCE  ROW LEVEL SECURITY;
 REVOKE ALL    ON public.analytics_session_sets FROM anon, authenticated;
 GRANT  SELECT ON public.analytics_session_sets TO authenticated;
+DROP POLICY IF EXISTS sets_read ON public.analytics_session_sets;
 CREATE POLICY sets_read ON public.analytics_session_sets FOR SELECT TO authenticated USING ((select auth.uid()) = user_id);
 
 -- per-user projected profile fields the metric views need (adherence target, unit, bodyweight)
-CREATE TABLE public.analytics_profile (
+CREATE TABLE IF NOT EXISTS public.analytics_profile (
   user_id        uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   unit           text NOT NULL DEFAULT 'lb' CHECK (unit IN ('lb','kg')),
   bodyweight     numeric(7,2),
@@ -284,15 +297,16 @@ ALTER TABLE public.analytics_profile ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.analytics_profile FORCE  ROW LEVEL SECURITY;
 REVOKE ALL    ON public.analytics_profile FROM anon, authenticated;
 GRANT  SELECT ON public.analytics_profile TO authenticated;
+DROP POLICY IF EXISTS profile_read ON public.analytics_profile;
 CREATE POLICY profile_read ON public.analytics_profile FOR SELECT TO authenticated USING ((select auth.uid()) = user_id);
 
 -- indexes (the sets table is the one that scales)
-CREATE INDEX sessions_user_time_idx   ON public.analytics_sessions (user_id, performed_at DESC);
-CREATE INDEX sessions_user_week_idx   ON public.analytics_sessions (user_id, local_week);
-CREATE INDEX sessions_plan_idx        ON public.analytics_sessions (plan_id) WHERE plan_id IS NOT NULL;
-CREATE INDEX sets_user_ex_time_idx    ON public.analytics_session_sets (user_id, exercise_id, performed_at DESC);
-CREATE INDEX sets_working_idx         ON public.analytics_session_sets (user_id, performed_at DESC) WHERE is_working;
-CREATE INDEX sets_exercise_cohort_idx ON public.analytics_session_sets (exercise_id) WHERE is_working;
+CREATE INDEX IF NOT EXISTS sessions_user_time_idx   ON public.analytics_sessions (user_id, performed_at DESC);
+CREATE INDEX IF NOT EXISTS sessions_user_week_idx   ON public.analytics_sessions (user_id, local_week);
+CREATE INDEX IF NOT EXISTS sessions_plan_idx        ON public.analytics_sessions (plan_id) WHERE plan_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS sets_user_ex_time_idx    ON public.analytics_session_sets (user_id, exercise_id, performed_at DESC);
+CREATE INDEX IF NOT EXISTS sets_working_idx         ON public.analytics_session_sets (user_id, performed_at DESC) WHERE is_working;
+CREATE INDEX IF NOT EXISTS sets_exercise_cohort_idx ON public.analytics_session_sets (exercise_id) WHERE is_working;
 
 -- ---------------------------------------------------------------------------
 -- 20260624042913_analytics_c1_math_helpers
@@ -605,18 +619,18 @@ select cron.schedule('analytics-nightly-full', '0 8 * * *', $$ select analytics.
 -- ---------------------------------------------------------------------------
 -- 20260624051148_analytics_e1_per_user_views_and_rpc
 -- ---------------------------------------------------------------------------
-create view public.v_my_session_volume with (security_invoker = true) as
+create or replace view public.v_my_session_volume with (security_invoker = true) as
   select user_id, performed_on, local_week, working_volume, working_volume_kg,
          working_set_count, working_rep_count
   from public.analytics_sessions where user_id = (select auth.uid());
 
-create view public.v_my_exercise_e1rm with (security_invoker = true) as
+create or replace view public.v_my_exercise_e1rm with (security_invoker = true) as
   select user_id, exercise_id, performed_on, max(e1rm) as best_e1rm, max(e1rm_kg) as best_e1rm_kg
   from public.analytics_session_sets
   where user_id = (select auth.uid()) and is_working and e1rm > 0
   group by user_id, exercise_id, performed_on;
 
-create view public.v_my_exercise_prs with (security_invoker = true) as
+create or replace view public.v_my_exercise_prs with (security_invoker = true) as
   with day_best as (
     select user_id, exercise_id, performed_on, performed_at, max(e1rm) as best_e1rm
     from public.analytics_session_sets
@@ -631,7 +645,7 @@ create view public.v_my_exercise_prs with (security_invoker = true) as
   select user_id, exercise_id, performed_on, best_e1rm as e1rm, prior_best as previous
   from w where rn > 1 and prior_best is not null and best_e1rm > prior_best;
 
-create view public.v_my_region_volume with (security_invoker = true) as
+create or replace view public.v_my_region_volume with (security_invoker = true) as
   select s.user_id, s.performed_on,
          floor(((s.performed_on - date '1970-01-01') + 3)::numeric/7)::int as local_week,
          r.region, count(*) as working_sets,
@@ -640,7 +654,7 @@ create view public.v_my_region_volume with (security_invoker = true) as
   where s.user_id = (select auth.uid()) and s.is_working
   group by s.user_id, s.performed_on, r.region;
 
-create view public.v_my_adherence with (security_invoker = true) as
+create or replace view public.v_my_adherence with (security_invoker = true) as
   select s.user_id, s.local_week, count(distinct s.performed_on) as training_days,
          p.days_per_week as target,
          case when p.days_per_week > 0
@@ -695,18 +709,18 @@ grant  execute on function public.my_volume_percentile() to authenticated;
 -- exclude day_is_estimated sessions from time-cohorting, and count DISTINCT users so one heavy
 -- logger can't skew popularity. Unique index on each → REFRESH ... CONCURRENTLY is possible.
 
-create materialized view analytics.cohort_dau as
+CREATE MATERIALIZED VIEW IF NOT EXISTS analytics.cohort_dau as
   select performed_on, count(distinct user_id) as dau
   from public.analytics_sessions where not day_is_estimated group by performed_on;
-create unique index cohort_dau_pk on analytics.cohort_dau (performed_on);
+CREATE UNIQUE INDEX IF NOT EXISTS cohort_dau_pk on analytics.cohort_dau (performed_on);
 
-create materialized view analytics.cohort_weekly as
+CREATE MATERIALIZED VIEW IF NOT EXISTS analytics.cohort_weekly as
   select local_week, count(distinct user_id) as wau,
          count(*)::numeric / nullif(count(distinct user_id),0) as sessions_per_user
   from public.analytics_sessions where not day_is_estimated group by local_week;
-create unique index cohort_weekly_pk on analytics.cohort_weekly (local_week);
+CREATE UNIQUE INDEX IF NOT EXISTS cohort_weekly_pk on analytics.cohort_weekly (local_week);
 
-create materialized view analytics.cohort_retention as
+CREATE MATERIALIZED VIEW IF NOT EXISTS analytics.cohort_retention as
   with firsts as (select user_id, min(local_week) as cohort_week
                   from public.analytics_sessions where not day_is_estimated group by user_id),
        act as (select distinct user_id, local_week
@@ -714,18 +728,18 @@ create materialized view analytics.cohort_retention as
   select f.cohort_week, a.local_week - f.cohort_week as weeks_since, count(distinct a.user_id) as active_users
   from firsts f join act a using (user_id)
   group by f.cohort_week, a.local_week - f.cohort_week;
-create unique index cohort_retention_pk on analytics.cohort_retention (cohort_week, weeks_since);
+CREATE UNIQUE INDEX IF NOT EXISTS cohort_retention_pk on analytics.cohort_retention (cohort_week, weeks_since);
 
-create materialized view analytics.popular_exercises as
+CREATE MATERIALIZED VIEW IF NOT EXISTS analytics.popular_exercises as
   select exercise_id, count(distinct user_id) as users, count(*) as working_sets
   from public.analytics_session_sets where is_working group by exercise_id;
-create unique index popular_exercises_pk on analytics.popular_exercises (exercise_id);
+CREATE UNIQUE INDEX IF NOT EXISTS popular_exercises_pk on analytics.popular_exercises (exercise_id);
 
 -- popular_plans: analytics_sessions carries plan_id, so the "same shape for plan_id" the spec noted is buildable
-create materialized view analytics.popular_plans as
+CREATE MATERIALIZED VIEW IF NOT EXISTS analytics.popular_plans as
   select plan_id, count(distinct user_id) as users, count(*) as sessions
   from public.analytics_sessions where plan_id is not null and plan_id <> '' group by plan_id;
-create unique index popular_plans_pk on analytics.popular_plans (plan_id);
+CREATE UNIQUE INDEX IF NOT EXISTS popular_plans_pk on analytics.popular_plans (plan_id);
 
 -- ---------------------------------------------------------------------------
 -- 20260624051235_analytics_e3_cohort_refresh_and_cron
@@ -799,7 +813,8 @@ alter table public.subscriptions enable row level security;
 -- Read-only to the owning user. NO insert/update/delete policies => only the service role
 -- (webhook) and SECURITY DEFINER trigger can write, both of which bypass RLS.
 drop policy if exists "read own subscription" on public.subscriptions;
-create policy "read own subscription" on public.subscriptions
+DROP POLICY IF EXISTS "read own subscription" ON public.subscriptions;
+CREATE POLICY "read own subscription" ON public.subscriptions
   for select using (auth.uid() = user_id);
 
 -- keep updated_at fresh on writes
@@ -946,12 +961,14 @@ grant execute on function public.is_active_subscriber() to authenticated, servic
 
 -- Gate writes. SELECT + DELETE policies are intentionally left unchanged (owner-only, ungated).
 drop policy if exists daily_rep_state_insert_own on public.daily_rep_state;
-create policy daily_rep_state_insert_own on public.daily_rep_state
+DROP POLICY IF EXISTS daily_rep_state_insert_own ON public.daily_rep_state;
+CREATE POLICY daily_rep_state_insert_own ON public.daily_rep_state
   for insert to authenticated
   with check ((select auth.uid()) = user_id and public.is_active_subscriber());
 
 drop policy if exists daily_rep_state_update_own on public.daily_rep_state;
-create policy daily_rep_state_update_own on public.daily_rep_state
+DROP POLICY IF EXISTS daily_rep_state_update_own ON public.daily_rep_state;
+CREATE POLICY daily_rep_state_update_own ON public.daily_rep_state
   for update to authenticated
   using ((select auth.uid()) = user_id)
   with check ((select auth.uid()) = user_id and public.is_active_subscriber());
