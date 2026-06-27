@@ -67,6 +67,8 @@ function SessionView() {
   const startWorkout = useStore((s) => s.startWorkout)
   const finishWorkout = useStore((s) => s.finishWorkout)
   const addExercise = useStore((s) => s.addExercise)
+  const avoidNoticeDismissedId = useStore((s) => s.avoidNoticeDismissedId)
+  const dismissAvoidNotice = useStore((s) => s.dismissAvoidNotice)
 
   const [shuffleN, setShuffleN] = useState(0)
   const [addOpen, setAddOpen] = useState(false)
@@ -75,6 +77,21 @@ function SessionView() {
 
   const isActive = current.status === 'active'
   const existingIds = current.exercises.map((e) => e.exerciseId)
+
+  // safety net: warn (once, dismissibly) when this session contains exercises that PRIMARILY train a
+  // muscle the user is working around — independent of the plan-filter setting, since they may follow
+  // an unfiltered plan or have added the exercise themselves
+  const avoidSet = new Set(profile.avoidMuscles ?? [])
+  const flaggedMuscles = avoidSet.size
+    ? [
+        ...new Set(
+          current.exercises
+            .flatMap((we) => getExercise(we.exerciseId)?.primary ?? [])
+            .filter((m) => avoidSet.has(m)),
+        ),
+      ]
+    : []
+  const showAvoidNotice = flaggedMuscles.length > 0 && avoidNoticeDismissedId !== current.id
 
   // on a plan session, the Add picker respects the plan's narrowed equipment
   let pickerEquipment: Equipment[] | undefined
@@ -198,6 +215,32 @@ function SessionView() {
 
       {/* ---- exercise list ---- */}
       <main className="flex-1 px-5 pt-4 pb-40 space-y-2.5">
+        {showAvoidNotice && (
+          <div className="rounded-2xl border border-rose-400/40 bg-rose-400/[0.08] px-4 py-3.5 flex items-start gap-3">
+            <div className="flex-1 min-w-0 text-[13px] leading-snug">
+              <div className="font-bold text-rose-200">Heads up — areas you’re working around</div>
+              <p className="text-fg/60 mt-1">
+                This session trains {flaggedMuscles.map(muscleLabel).join(', ')}, which you flagged to work
+                around. Swap or remove those exercises if needed — and update what you’re working around
+                anytime in{' '}
+                <button
+                  onClick={() => router.push('/settings/training')}
+                  className="font-semibold text-rose-200 underline underline-offset-2 active:text-rose-100"
+                >
+                  Settings → Training
+                </button>
+                .
+              </p>
+            </div>
+            <button
+              onClick={() => dismissAvoidNotice(current.id)}
+              aria-label="Dismiss"
+              className="shrink-0 -mr-1 -mt-0.5 grid place-items-center h-8 w-8 rounded-full text-fg/40 active:text-fg/70 active:bg-raised transition"
+            >
+              <XIcon size={16} />
+            </button>
+          </div>
+        )}
         {current.exercises.length === 0 ? (
           <div className="card p-8 text-center text-fg/45 text-sm">
             No exercises yet. Add one below to get started.

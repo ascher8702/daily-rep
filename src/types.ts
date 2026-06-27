@@ -161,6 +161,9 @@ export interface Profile {
   focusMuscles: MuscleGroup[]
   /** muscle areas to avoid (injury/preference) — the generator won't program lifts that primarily hit them */
   avoidMuscles?: MuscleGroup[]
+  /** also apply `avoidMuscles` to PLAN-prescribed lifts (drop avoided-primary lifts from plan days).
+   *  Off by default so following a program keeps its structure; the session alert warns either way. */
+  avoidInPlans?: boolean
   bodyweight?: number
   /** optional self-reported gender — nudges plan recommendations (e.g. glute-focused programs); never gates content */
   gender?: 'male' | 'female'

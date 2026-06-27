@@ -117,7 +117,15 @@ export default function HomeScreen() {
     //    didn't collapse heavily — mirrors generateFromPlan so the preview matches what Start builds.
     if (planDay.lifts?.length) {
       const owned = new Set<Equipment>([...profile.equipment, 'bodyweight'])
-      const { resolved } = resolvePlanLifts(planDay.lifts, owned, planDay.goal ?? profile.goal)
+      let resolved = resolvePlanLifts(planDay.lifts, owned, planDay.goal ?? profile.goal).resolved
+      // mirror the build: when "apply to plans" is on, drop avoided-primary lifts from the preview too
+      if (profile.avoidInPlans && profile.avoidMuscles?.length) {
+        const avoid = new Set(profile.avoidMuscles)
+        resolved = resolved.filter(({ exerciseId }) => {
+          const ex = getExercise(exerciseId)
+          return !ex || !ex.primary.some((m) => avoid.has(m))
+        })
+      }
       if (resolved.length >= Math.min(3, planDay.lifts.length)) {
         return {
           adapted: false,

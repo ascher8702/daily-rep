@@ -54,6 +54,9 @@ export interface AppState {
   current: Workout | null // the planned / active session
   restEndsAt: number | null // epoch ms for the running rest timer
   restDuration: number // seconds the current rest was set to
+  // session id whose "working around" alert the user dismissed (transient: not persisted, so it
+  // resets on reload but stays dismissed while the app is open — won't nag within a session)
+  avoidNoticeDismissedId: string | null
   activePlan: ActivePlan | null // the structured plan the user is following
   customPlans: WorkoutPlan[] // user-created plans
   /** last dayIndex reached per plan, so switching back to a plan resumes instead of restarting */
@@ -98,6 +101,8 @@ export interface AppState {
   generateFromPlan: (shuffle?: number) => void
   /** jump the active plan to a specific schedule day and build it (used by Home's "Switch" picker) */
   generateFromPlanDay: (dayIndex: number) => void
+  /** dismiss the in-session "working around" alert for a given session id (won't reshow this session) */
+  dismissAvoidNotice: (sessionId: string) => void
   skipPlanDay: () => void
 
   // ---- custom plans ----
@@ -284,7 +289,18 @@ export function resolveDayLifts(day: PlanDay, profile: Profile, overrides: Recor
     const to = overrides[`${day.label}::${l.exerciseId}`]
     return { ...l, planLiftId: l.exerciseId, exerciseId: to && to !== l.exerciseId ? to : l.exerciseId }
   })
-  return { resolved: resolvePlanLifts(lifts, owned, goal).resolved, goal }
+  let resolved = resolvePlanLifts(lifts, owned, goal).resolved
+  // opt-in: extend "working around" to plan lifts — drop any whose PRIMARY mover is an avoided muscle.
+  // (If this thins the day out, generateFromPlan falls back to focus-based generation, which already
+  // respects avoidMuscles.) Off by default so a program keeps its structure unless the user opts in.
+  if (profile.avoidInPlans && profile.avoidMuscles?.length) {
+    const avoid = new Set(profile.avoidMuscles)
+    resolved = resolved.filter(({ exerciseId }) => {
+      const ex = getExercise(exerciseId)
+      return !ex || !ex.primary.some((m) => avoid.has(m))
+    })
+  }
+  return { resolved, goal }
 }
 
 /**
@@ -637,6 +653,7 @@ export const useStore = create<AppState>()(
       profile: DEFAULT_PROFILE,
       workouts: [],
       current: null,
+      avoidNoticeDismissedId: null,
       restEndsAt: null,
       restDuration: 0,
       activePlan: null,
@@ -951,6 +968,8 @@ export const useStore = create<AppState>()(
         )
         get().generateFromPlan()
       },
+
+      dismissAvoidNotice: (sessionId) => set({ avoidNoticeDismissedId: sessionId }),
 
       addCustomPlan: (plan) =>
         set((s) => ({ customPlans: [...s.customPlans, { ...plan, custom: true }] })),

@@ -160,6 +160,31 @@ export default function TrainingPreferencesPage() {
           <p className="text-[11px] text-fg/40 mt-2">
             Injured or sore? Auto-built workouts skip exercises that mainly target these. Not medical advice — train safely.
           </p>
+
+          <div className="mt-3.5 flex items-center justify-between gap-3 rounded-2xl bg-card border border-hairline/10 p-4">
+            <div className="min-w-0">
+              <div className="text-[13px] font-semibold text-fg/80">Apply to plan workouts</div>
+              <div className="text-[11px] text-fg/40 mt-0.5">
+                Also drop these from structured plan days. Off keeps a program intact; you’ll still get a heads-up when a session targets them.
+              </div>
+            </div>
+            {(() => {
+              const on = profile.avoidInPlans ?? false
+              return (
+                <button
+                  role="switch"
+                  aria-checked={on}
+                  aria-label="Apply working-around muscles to plan workouts"
+                  onClick={() => updateProfile({ avoidInPlans: !on })}
+                  className={`relative h-7 w-12 shrink-0 rounded-full transition ${on ? 'bg-rose-400' : 'bg-raised border border-hairline/15'}`}
+                >
+                  <span
+                    className={`absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-transform ${on ? 'translate-x-[1.375rem]' : 'translate-x-0.5'}`}
+                  />
+                </button>
+              )
+            })()}
+          </div>
         </section>
       </div>
     </div>
