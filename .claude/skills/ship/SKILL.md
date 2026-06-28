@@ -57,16 +57,17 @@ Call `Agent` with `subagent_type: "coder"`. Tell it: read `.pipeline/spec.md` + 
 **Gate:** confirm `.pipeline/change.md` exists.
 
 ### 4. Reviewer  →  `.pipeline/review.md` (the verdict)
-First **stage the pipeline's work** so newly created files are visible in the diff: run `git add -A`. (The reviewer is read-only and cannot stage; without this it would miss new files, since plain `git diff` hides untracked ones.) Then call `Agent` with `subagent_type: "reviewer"`. Tell it: read spec/tests/change, inspect the **staged** diff (`git diff --staged`), re-run the full suite itself, and write `.pipeline/review.md` with a `VERDICT:` line. The reviewer is read-only and cannot change code.
+**Freeze the feature into a scoped commit before review.** Stage ONLY the feature's own paths — the exact file list is in spec §4 (limiter/source + test files + the touched endpoints) — and commit them with an explicit pathspec: `git commit -m "feat: …" -- <those paths>`. Do **not** use `git add -A`: an autonomous run may have scheduled tasks or hooks (e.g. a docs linter doing `git mv`) concurrently mutating the working tree and index, and `-A` would drag that unrelated churn into the review and the commit. Committing the feature to its own commit gives the reviewer a stable diff immune to that race.
+Then call `Agent` with `subagent_type: "reviewer"`. Tell it: the feature is **HEAD** (give the sha); review exactly `git show HEAD`; ignore any unrelated working-tree churn (`git status`/`git diff` may be polluted by a concurrent process); read spec/tests/change; re-run the full suite itself; write `.pipeline/review.md` with a `VERDICT:` line. The reviewer is read-only and cannot change code.
 **Gate:** read `.pipeline/review.md` and grep the `VERDICT:` line.
 
 ### 5. Verdict gate + retry loop
 - **`VERDICT: APPROVE`** → go to Finalize.
-- **`VERDICT: REQUEST_CHANGES`** → re-dispatch the **coder** (step 3) and tell it to read `.pipeline/review.md` and fix every blocking finding, then re-run the **reviewer** (step 4). Allow **up to 2** such retries. If still not approved after the budget, stop and hand the user the open findings — do not merge.
+- **`VERDICT: REQUEST_CHANGES`** → re-dispatch the **coder** (step 3) and tell it to read `.pipeline/review.md` and fix every blocking finding. Then fold the fixes into the feature commit (`git commit --amend -- <feature paths>`, or add a follow-up commit) and re-run the **reviewer** (step 4) against the updated HEAD. Allow **up to 2** such retries. If still not approved after the budget, stop and hand the user the open findings — do not merge.
 
 ### 6. Finalize
-- Stage and commit the work **on the feature branch** with a message describing the feature and noting it shipped via the /ship pipeline. End the commit message with the standard `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>` line.
-- **Do not merge to `main` automatically.** Touching the main branch is gated: present the verdict, the branch name, the diffstat, and the `.pipeline/` artifacts, and ask the user to confirm the merge (or open a PR) when they're back. On an explicit prior "merge when approved" instruction, you may fast-forward `main` — otherwise leave it for the user.
+- The feature is already committed on the branch (step 4). Confirm the commit is scoped to the feature only (`git show --stat HEAD`) and that no unrelated concurrent churn rode along.
+- **Do not merge to `main` automatically.** Touching the main branch is gated: present the verdict, the branch name, the diffstat, and the `.pipeline/` artifacts, and give the exact merge/cherry-pick command for the user to run (or open a PR) when they're back. On an explicit prior "merge when approved" instruction, you may fast-forward `main` — otherwise leave it for the user.
 
 ## Report back
 End with a tight summary: the branch, the verdict, suite status, files changed, the riskiest thing the reviewer flagged, and the one command to merge. Link the artifacts (`.pipeline/spec.md`, `.pipeline/review.md`) so the user can audit the run.
