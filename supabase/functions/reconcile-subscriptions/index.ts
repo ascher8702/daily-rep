@@ -2,6 +2,13 @@ import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import Stripe from 'https://esm.sh/stripe@17.7.0?target=deno'
 import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4'
 import { mapSubscriptionToRow, needsReconcile, LIVE_STATUSES, type PriceMap, type StripeSubLike } from '../_shared/subscription.ts'
+import {
+  checkRateLimit,
+  InMemoryRateLimitStore,
+  LIMITS,
+  rateLimitResponseHeaders,
+  type RateLimitResult,
+} from '../_shared/rateLimit.ts'
 
 /**
  * Scheduled reconciliation: the safety net for MISSED webhooks. If Stripe's
@@ -21,6 +28,16 @@ const PRICES: PriceMap = {
 
 const BATCH_LIMIT = 200
 
+// Per-instance fixed-window limiter (one Map per cold start; see spec §11 on warm-instance scope).
+const rateStore = new InMemoryRateLimitStore()
+
+/** Client IP from the proxy headers: first x-forwarded-for hop, else x-real-ip, else 'unknown'. */
+function clientIp(req: Request): string {
+  const fwd = req.headers.get('x-forwarded-for')
+  if (fwd) return fwd.split(',')[0].trim()
+  return req.headers.get('x-real-ip') ?? 'unknown'
+}
+
 function makeClients(): { stripe: Stripe; admin: SupabaseClient } | null {
   const secret = Deno.env.get('STRIPE_SECRET_KEY')
   const url = Deno.env.get('SUPABASE_URL')
@@ -32,6 +49,19 @@ function makeClients(): { stripe: Stripe; admin: SupabaseClient } | null {
 
 Deno.serve(async (req) => {
   if (req.method !== 'POST') return new Response('method not allowed', { status: 405 })
+
+  // Coarse IP pre-filter BEFORE the shared-secret check, so an unauthenticated flood probing the
+  // endpoint is rejected cheaply. Fail-open on a store error (a dropped reconcile run is benign — the
+  // next cron run is the backstop — but we never gratuitously block a legitimate invocation).
+  let rl: RateLimitResult | null
+  try {
+    rl = await checkRateLimit(rateStore, 'reconcile:' + clientIp(req), LIMITS.PUBLIC_IP, Date.now())
+  } catch {
+    rl = null
+  }
+  if (rl && !rl.allowed) {
+    return new Response('rate limited', { status: 429, headers: rateLimitResponseHeaders(rl) })
+  }
 
   // Shared-secret auth (constant work; the secret must be configured).
   const expected = Deno.env.get('RECONCILE_SECRET')

@@ -2,6 +2,13 @@ import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import Stripe from 'https://esm.sh/stripe@17.7.0?target=deno'
 import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4'
 import { mapSubscriptionToRow, type PriceMap, type StripeSubLike } from '../_shared/subscription.ts'
+import {
+  checkRateLimit,
+  InMemoryRateLimitStore,
+  LIMITS,
+  rateLimitResponseHeaders,
+  type RateLimitResult,
+} from '../_shared/rateLimit.ts'
 
 /**
  * Stripe webhook: keeps each user's `public.subscriptions` row in sync with Stripe. This function is
@@ -19,6 +26,16 @@ const PRICES: PriceMap = {
 
 // Signature verification needs the WebCrypto-backed provider in Deno; it carries no secret.
 const cryptoProvider = Stripe.createSubtleCryptoProvider()
+
+// Per-instance fixed-window limiter (one Map per cold start; see spec §11 on warm-instance scope).
+const rateStore = new InMemoryRateLimitStore()
+
+/** Client IP from the proxy headers: first x-forwarded-for hop, else x-real-ip, else 'unknown'. */
+function clientIp(req: Request): string {
+  const fwd = req.headers.get('x-forwarded-for')
+  if (fwd) return fwd.split(',')[0].trim()
+  return req.headers.get('x-real-ip') ?? 'unknown'
+}
 
 /** Build the Stripe + admin clients from env, or null if a required secret is missing. */
 function makeClients(): { stripe: Stripe; admin: SupabaseClient } | null {
@@ -85,6 +102,19 @@ async function markCustomerCanceled(admin: SupabaseClient, customerId: string) {
 
 Deno.serve(async (req) => {
   if (req.method !== 'POST') return new Response('method not allowed', { status: 405 })
+
+  // Coarse IP front-door guard BEFORE building any Stripe/admin client or reading the body. FAIL-OPEN:
+  // a store error must never drop a legitimately-signed Stripe event (a missed billing change), and the
+  // 60/min budget sits far above real Stripe delivery rates, so genuine webhooks are never throttled.
+  let rl: RateLimitResult | null
+  try {
+    rl = await checkRateLimit(rateStore, 'webhook:' + clientIp(req), LIMITS.PUBLIC_IP, Date.now())
+  } catch {
+    rl = null
+  }
+  if (rl && !rl.allowed) {
+    return new Response('rate limited', { status: 429, headers: rateLimitResponseHeaders(rl) })
+  }
 
   const clients = makeClients()
   if (!clients) {
