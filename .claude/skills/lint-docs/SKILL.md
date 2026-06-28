@@ -71,7 +71,8 @@ Present a single table — every doc, its verdict, one-line reason, and the conc
 ### 5. Execute (only what was confirmed)
 - **Archive:** `git mv docs/<doc> docs/archived/<doc>` (preserves history). Prepend a one-line banner at the very top:
   `> **Archived <YYYY-MM-DD>.** Point-in-time <type>; superseded by <what> / its recommendations shipped. Kept for history — not current.`
-  Then fix every inbound reference (point it at `docs/archived/…`, or remove the link if it implied currency). If several get archived, drop/refresh a one-line index in `docs/archived/README.md`.
+  For a non-Markdown doc that has no comment syntax (e.g. a `.json` spec), add the banner as a top-level `"_archived": "…"` key instead of a `>` line.
+  Then fix every inbound reference — and grep **source comments**, not just other docs (this repo cites docs from `src/*.ts` headers): point each at `docs/archived/…`, repoint it to the live doc that superseded it, or remove the link if it implied currency. If several get archived, drop/refresh a one-line index in `docs/archived/README.md`.
 - **Update:** make **surgical** edits — rewrite only the stale statements, preserve the doc's structure and voice, fix cross-refs. Don't rewrite a doc wholesale when a few lines drifted.
 - **Keep:** nothing (apply a noted cosmetic nit only if the user opted in).
 
