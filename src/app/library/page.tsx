@@ -2,10 +2,11 @@
 
 import { useMemo, useState } from 'react'
 import type { Equipment, Exercise, ExerciseCategory, MuscleGroup } from '@/types'
-import { EXERCISES } from '@/data/exercises'
+import { getExercisePool } from '@/data/exercises'
 import { ALL_MUSCLES, MUSCLES, muscleLabel } from '@/data/muscles'
 import { isExerciseDoable } from '@/lib/equipment'
 import { useStore, resolvePlan, planDayExerciseIds, activePlanDayContext } from '@/store/useStore'
+import { useExercisesStore } from '@/lib/exercisesRemote'
 import { exerciseConflicts } from '@/lib/injuries'
 import { emitToast } from '@/lib/toast'
 import { useConfirm } from '@/components/ConfirmProvider'
@@ -75,6 +76,9 @@ export default function LibraryPage() {
   const removeExerciseToday = useStore((s) => s.removeExerciseToday)
 
   const owned = useMemo(() => new Set(profile.equipment), [profile.equipment])
+  // subscribe to the exercise-catalogue source so a late DB overlay repaints the list/detail sheet
+  // (bundled-only: stays 'bundled', one render, no behavior change).
+  const exerciseSource = useExercisesStore((s) => s.source)
 
   // The exercise ids that make up TODAY's workout, resolved correctly whether or not the session has
   // been built yet: the live session if there is one, else the active plan day's exercises (swaps +
@@ -125,16 +129,18 @@ export default function LibraryPage() {
         .toLowerCase()
       return haystack.includes(q)
     }
-    return EXERCISES.filter((ex) => {
+    return getExercisePool().filter((ex) => {
       if (!matchesQuery(ex)) return false
       if (muscle !== 'all' && !ex.primary.includes(muscle) && !ex.secondary.includes(muscle)) return false
       if (category !== 'all' && ex.category !== category) return false
       if (onlyAvailable && !isAvailable(ex, owned)) return false
       return true
     })
-  }, [query, muscle, category, onlyAvailable, owned])
+    // exerciseSource is a dep so a late DB overlay repaints; the pool itself is read inside.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query, muscle, category, onlyAvailable, owned, exerciseSource])
 
-  const active = openId ? EXERCISES.find((e) => e.id === openId) ?? null : null
+  const active = openId ? getExercisePool().find((e) => e.id === openId) ?? null : null
 
   // Apply a toggle for a given scope. `forward` (plan days only) also edits the user's plan copy so the
   // change persists to future sessions of this day. Toasts confirm; removeExerciseToday shows an Undo.

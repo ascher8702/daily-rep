@@ -1,5 +1,10 @@
 import type { Exercise } from '../types'
-import { REHAB_BY_ID } from './rehab'
+import { REHAB_BY_ID, REHAB_EXERCISES } from './rehab'
+
+// Re-export the bundled rehab catalogue alongside the main library so the runtime overlay (and its
+// tests) can reference both pools from one module. These stay the immutable bundled arrays — the DB
+// overlay lives in separate runtime registries below, never by mutating these.
+export { REHAB_EXERCISES }
 
 // A curated library covering every muscle group across equipment profiles.
 // instructions are short cueing steps shown on the exercise detail sheet.
@@ -595,9 +600,66 @@ export const EXERCISE_BY_ID: Record<string, Exercise> = Object.fromEntries(
   EXERCISES.map((e) => [e.id, e]),
 )
 
+/**
+ * Merge DB-managed exercises over the bundled catalogue: a remote exercise with the same id OVERRIDES
+ * the bundled one; remote-only exercises are appended. Bundled order is preserved (offline-first — the
+ * bundled set is always the baseline). The merged set is then partitioned into the generator/library
+ * pool (category !== 'rehab') and the rehab pool (category === 'rehab'), exactly like the bundled
+ * EXERCISES vs REHAB_EXERCISES split — partitioned by the RESULTING category, so a DB override that
+ * flips a lift to/from 'rehab' honestly moves it between pools. Pure; returns the bundled references
+ * unchanged when `remote` is empty/nullish (so `=== EXERCISES` / `=== REHAB_EXERCISES`, a true no-op).
+ */
+export function mergeExerciseCatalogue(
+  remote: readonly Exercise[] | null | undefined,
+): { pool: Exercise[]; rehab: Exercise[] } {
+  if (!remote || remote.length === 0) return { pool: EXERCISES, rehab: REHAB_EXERCISES }
+
+  // override-by-id over the bundled baseline (both catalogues), then append remote-only entries.
+  const byId = new Map<string, Exercise>(remote.map((e) => [e.id, e]))
+  const bundledIds = new Set<string>([...EXERCISES, ...REHAB_EXERCISES].map((e) => e.id))
+  const merged = [
+    ...EXERCISES.map((e) => byId.get(e.id) ?? e),
+    ...REHAB_EXERCISES.map((e) => byId.get(e.id) ?? e),
+  ]
+  for (const e of remote) if (!bundledIds.has(e.id)) merged.push(e)
+
+  // partition by the resulting category so an override that demotes a lift to 'rehab' leaves the pool.
+  const pool: Exercise[] = []
+  const rehab: Exercise[] = []
+  for (const e of merged) (e.category === 'rehab' ? rehab : pool).push(e)
+  return { pool, rehab }
+}
+
+// Runtime registries for getExercise() + the iteration pools. They default to the bundled catalogue (so
+// resolution + iteration work offline and before any DB fetch) and are overlaid by DB exercises once
+// loaded — see setRuntimeExercises. The exported EXERCISES/REHAB_EXERCISES arrays are never mutated.
+let runtimePoolById: Record<string, Exercise> = EXERCISE_BY_ID
+let runtimeRehabById: Record<string, Exercise> = REHAB_BY_ID
+let runtimePool: Exercise[] = EXERCISES
+let runtimeRehab: Exercise[] = REHAB_EXERCISES
+
+/** Point the runtime accessors at a merged catalogue. Called when DB exercises load; idempotent. */
+export function setRuntimeExercises(merged: { pool: Exercise[]; rehab: Exercise[] }): void {
+  runtimePool = merged.pool
+  runtimeRehab = merged.rehab
+  runtimePoolById = Object.fromEntries(merged.pool.map((e) => [e.id, e]))
+  runtimeRehabById = Object.fromEntries(merged.rehab.map((e) => [e.id, e]))
+}
+
+/** The live generator/library pool (bundled, overlaid by DB once loaded). NEVER includes rehab. */
+export function getExercisePool(): Exercise[] {
+  return runtimePool
+}
+
+/** The live rehab pool (bundled, overlaid by DB once loaded). */
+export function getRehabPool(): Exercise[] {
+  return runtimeRehab
+}
+
 export function getExercise(id: string): Exercise | undefined {
   // Resolve main-library lifts first, then fall back to the therapeutic catalogue so rehab work logged
   // in a session (or shown on the detail sheet) renders — without ever entering the generator's pool,
-  // which only iterates EXERCISES. See data/rehab.
-  return EXERCISE_BY_ID[id] ?? REHAB_BY_ID[id]
+  // which only iterates the non-rehab pool. Both registries default to the bundled maps, so this is
+  // byte-identical to today until DB exercises overlay them. See data/rehab.
+  return runtimePoolById[id] ?? runtimeRehabById[id]
 }

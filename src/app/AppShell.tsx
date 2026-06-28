@@ -6,6 +6,7 @@ import { useStore } from '@/store/useStore'
 import { useAuth } from '@/store/useAuth'
 import { useEntitlement } from '@/store/useEntitlement'
 import { loadRemotePlans } from '@/lib/plansRemote'
+import { loadRemoteExercises } from '@/lib/exercisesRemote'
 import { applyTheme } from '@/lib/theme'
 import BottomNav from '@/components/BottomNav'
 import RestTimerBar from '@/components/RestTimerBar'
@@ -62,9 +63,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     else stopEntitlement()
   }, [signedInEmail, startEntitlement, stopEntitlement])
 
-  // load any DB-managed plans over the bundled catalogue (public-read; no-ops offline/unconfigured)
+  // load any DB-managed exercises THEN plans over the bundled catalogues (public-read; no-ops
+  // offline/unconfigured). Exercises load first so plan referential validation (which resolves
+  // exercise ids via getExercise) sees a DB-only exercise before any plan row is validated.
   useEffect(() => {
-    void loadRemotePlans()
+    void (async () => {
+      await loadRemoteExercises()
+      await loadRemotePlans()
+    })()
   }, [])
 
   // keep the live theme/accent in sync with the user's choice (and OS changes when 'system')

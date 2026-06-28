@@ -1,9 +1,10 @@
 # Remote config — DB-managed bundled settings
 
 A small, resource-agnostic layer (`src/lib/remoteConfig.ts`) for backing a **bundled** config resource
-with a **DB-managed** overlay that is **cached locally** so it survives reload and works offline. Today
-the only consumer is the plan catalogue; equipment and other bundled settings can adopt the same pattern
-without re-implementing the fetch/cache plumbing.
+with a **DB-managed** overlay that is **cached locally** so it survives reload and works offline. The
+consumers today are the **plan catalogue** (`src/lib/plansRemote.ts`) and the **exercise + rehab
+catalogue** (`src/lib/exercisesRemote.ts`); equipment and other bundled settings can adopt the same
+pattern without re-implementing the fetch/cache plumbing.
 
 ## The contract
 
@@ -56,6 +57,38 @@ rehab ids), rejecting a whole plan on a structural / referential / enum violatio
 recoverable numeric noise (set/rep counts). A typed reject `reason` is returned so telemetry can record
 *why* a row dropped (via the `onReject` hook on `parsePlanRows`).
 
+## The exercises wiring (second consumer)
+
+`src/lib/exercisesRemote.ts` defines the `exercises` resource and exposes `useExercisesStore`
+(`pool`, `rehab`, `loaded`, `source`), `loadRemoteExercises()`, and `fetchRemoteExercises()`. It backs
+the bundled exercise library (`src/data/exercises.ts → EXERCISES`) **and** the therapeutic/rehab
+catalogue (`src/data/rehab.ts → REHAB_EXERCISES`) from one public-read `public.exercises` table: a row
+whose `data.category` is `'rehab'` routes to the rehab pool, everything else to the generator/library
+pool — the same split as the bundled arrays.
+
+Two things make it differ from plans:
+
+- **The merge `Value` is a `{ pool, rehab }` pair**, not a plain array (this is why the layer keeps
+  `Item`/`Value` separate). Validation lives in `src/lib/exerciseSchema.ts`
+  (`validateExerciseRow` / `parseExerciseRows` / `parseCachedExercises`): it rejects (never clamps) a
+  structural / referential / enum violation — an unknown `category`, `equipment`, or muscle, a bad
+  `difficulty`/`instructions` — while dropping a malformed descriptive optional. A rehab exercise may
+  have an empty `primary` (the bundled `rehab-strain-*` entries do); a non-rehab one may not.
+- **The overlay drives the iteration pool, not just a by-id lookup.** Plans are only ever read by id
+  (`getPlan`), but exercises are *iterated* by the generator, substitution, the library, and the
+  add-exercise picker. So `src/data/exercises.ts` exposes runtime pool accessors —
+  `getExercisePool()` (never includes rehab) and `getRehabPool()` — plus a DB-aware `getExercise(id)`,
+  all backed by runtime registries that `setRuntimeExercises` overlays. The exported `EXERCISES` /
+  `REHAB_EXERCISES` arrays stay the **immutable** bundled arrays (an analytics test pins their length);
+  only the iterating consumers switch to `getExercisePool()`. The library/picker subscribe to
+  `useExercisesStore.source` so a late DB apply repaints.
+
+**Load order:** `AppShell` calls `loadRemoteExercises()` **before** `loadRemotePlans()`, because
+`validatePlanRow` enforces referential integrity through `getExercise`. A plan that references a
+DB-only exercise id must see that exercise already in the runtime registry, or it would be wrongly
+dropped as `unknown-exercise`. Both loaders are independent of mount data and never throw, so awaiting
+them in series is safe.
+
 ## To add a resource (e.g. equipment)
 
 No change to `remoteConfig.ts` is needed — define a new `RemoteConfigResource` and a tiny store:
@@ -101,3 +134,21 @@ SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... node --experimental-strip-types s
 `--emit-sql` is deterministic: re-running on the same catalogue produces identical SQL. The table
 already exists (see the baseline migration), so seeding is the only step. The app ships the bundled seed
 regardless, so committing the generated migration is optional.
+
+## Seeding `public.exercises`
+
+`scripts/seed-exercises.ts` is the exercise analogue: it unions the bundled `EXERCISES` +
+`REHAB_EXERCISES`, **validating each through `exerciseSchema` first** (an unknown muscle / equipment /
+category, or a bad difficulty / instructions, fails the script loud — a CI guard for the catalogue):
+
+```
+# emit an idempotent seed migration (preferred — schema-as-code)
+node --experimental-strip-types scripts/seed-exercises.ts --emit-sql
+
+# or push directly with a service-role client
+SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... node --experimental-strip-types scripts/seed-exercises.ts
+```
+
+The `public.exercises` table (mirroring `public.plans`) ships in its own migration
+(`*_create_exercises_table.sql`). The app ships the bundled catalogues regardless, so committing the
+generated seed migration is optional — an empty table simply means "bundled only".

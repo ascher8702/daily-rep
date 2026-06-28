@@ -1,5 +1,5 @@
 import type { Equipment, Exercise, Goal } from '../types'
-import { EXERCISES, getExercise } from '../data/exercises'
+import { getExercise, getExercisePool } from '../data/exercises'
 import { isExerciseDoable } from './equipment'
 
 /**
@@ -170,7 +170,7 @@ export function substituteExercise(
 
   // candidate pool: doable, not already used in this day, and either the same movement pattern or
   // sharing a primary muscle
-  const candidates = EXERCISES.filter(
+  const candidates = getExercisePool().filter(
     (c) =>
       c.id !== exerciseId &&
       !exclude.has(c.id) &&

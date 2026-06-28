@@ -10,7 +10,7 @@ import type {
   LoggedSet,
   Unit,
 } from '../types'
-import { EXERCISES, getExercise } from '../data/exercises'
+import { getExercise, getExercisePool } from '../data/exercises'
 import { MUSCLES, ALL_MUSCLES } from '../data/muscles'
 import { computeRecovery, freshnessFromFatigue } from './recovery'
 import { injuryConstraints, isBlockedByInjury } from './injuries'
@@ -254,7 +254,7 @@ export function generateWorkout(
   // is how the generator "trains around" an injury — see lib/injuries.
   const constraints = injuryConstraints(profile, { surface: opts.surface })
   const blocked = (ex: Exercise): boolean => constraints.hasConstraints && isBlockedByInjury(ex, constraints)
-  let candidates = EXERCISES.filter(
+  let candidates = getExercisePool().filter(
     (ex) =>
       ex.difficulty <= cap &&
       isExerciseDoable(ex, owned) &&
@@ -265,10 +265,10 @@ export function generateWorkout(
   // Never return an empty session: relax the focus filter first (still training around the injury),
   // then — only if there is still nothing doable — drop the injury constraints as a last resort.
   if (candidates.length === 0) {
-    candidates = EXERCISES.filter((ex) => ex.difficulty <= cap && isExerciseDoable(ex, owned) && !blocked(ex))
+    candidates = getExercisePool().filter((ex) => ex.difficulty <= cap && isExerciseDoable(ex, owned) && !blocked(ex))
   }
   if (candidates.length === 0) {
-    candidates = EXERCISES.filter((ex) => ex.difficulty <= cap && isExerciseDoable(ex, owned))
+    candidates = getExercisePool().filter((ex) => ex.difficulty <= cap && isExerciseDoable(ex, owned))
   }
 
   // running coverage so we diversify muscles rather than hammering one
@@ -394,7 +394,7 @@ export function suggestedFocus(
   if (profile) {
     const owned = new Set<Equipment>([...profile.equipment, 'bodyweight'])
     const trainable = new Set<MuscleGroup>()
-    for (const ex of EXERCISES) {
+    for (const ex of getExercisePool()) {
       if (!isExerciseDoable(ex, owned)) continue
       for (const m of ex.primary) trainable.add(m)
       for (const m of ex.secondary) trainable.add(m)

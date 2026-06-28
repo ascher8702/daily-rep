@@ -2,10 +2,11 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import type { Equipment, MuscleGroup } from '../types'
-import { EXERCISES } from '../data/exercises'
+import { getExercisePool } from '../data/exercises'
 import { ALL_MUSCLES, MUSCLES, muscleLabel } from '../data/muscles'
 import { isExerciseDoable } from '../lib/equipment'
 import { useStore } from '../store/useStore'
+import { useExercisesStore } from '../lib/exercisesRemote'
 import Sheet from './Sheet'
 import { SearchIcon, PlusIcon } from './icons'
 import { Chip } from './ui/Chip'
@@ -48,16 +49,22 @@ export default function ExercisePicker({
 
   const excludeSet = useMemo(() => new Set(exclude), [exclude])
 
+  // subscribe to the exercise-catalogue source so a late DB overlay repaints results (bundled-only:
+  // stays 'bundled', one render, no behavior change).
+  const exerciseSource = useExercisesStore((s) => s.source)
+
   const results = useMemo(() => {
     const query = q.trim().toLowerCase()
-    return EXERCISES.filter((ex) => {
+    return getExercisePool().filter((ex) => {
       if (excludeSet.has(ex.id)) return false
       if (muscle !== 'all' && !ex.primary.includes(muscle) && !ex.secondary.includes(muscle)) return false
       if (onlyAvailable && !isExerciseDoable(ex, owned)) return false
       if (query && !ex.name.toLowerCase().includes(query)) return false
       return true
     })
-  }, [q, muscle, onlyAvailable, owned, excludeSet])
+    // exerciseSource is a dep so a late DB overlay repaints; the pool itself is read inside.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q, muscle, onlyAvailable, owned, excludeSet, exerciseSource])
 
   return (
     <Sheet open={open} onClose={onClose} title={title} full>
