@@ -21,9 +21,10 @@ import {
  * a shared secret header `x-reconcile-secret` == env RECONCILE_SECRET. Never expose this without it.
  */
 
-const PRICES: PriceMap = {
-  monthly: Deno.env.get('STRIPE_PRICE_MONTHLY') ?? 'price_1TmM9lLy7BVo8A05IudiSYkf',
-  annual: Deno.env.get('STRIPE_PRICE_ANNUAL') ?? 'price_1TmM9lLy7BVo8A056dF3HnGw',
+function priceMap(): PriceMap | null {
+  const monthly = Deno.env.get('STRIPE_PRICE_MONTHLY')
+  const annual = Deno.env.get('STRIPE_PRICE_ANNUAL')
+  return monthly && annual ? { monthly, annual } : null
 }
 
 const BATCH_LIMIT = 200
@@ -38,13 +39,14 @@ function clientIp(req: Request): string {
   return req.headers.get('x-real-ip') ?? 'unknown'
 }
 
-function makeClients(): { stripe: Stripe; admin: SupabaseClient } | null {
+function makeClients(): { stripe: Stripe; admin: SupabaseClient; prices: PriceMap } | null {
   const secret = Deno.env.get('STRIPE_SECRET_KEY')
   const url = Deno.env.get('SUPABASE_URL')
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
-  if (!secret || !url || !serviceKey) return null
+  const prices = priceMap()
+  if (!secret || !url || !serviceKey || !prices) return null
   const stripe = new Stripe(secret, { apiVersion: '2024-06-20', httpClient: Stripe.createFetchHttpClient() })
-  return { stripe, admin: createClient(url, serviceKey) }
+  return { stripe, admin: createClient(url, serviceKey), prices }
 }
 
 Deno.serve(async (req) => {
@@ -71,10 +73,10 @@ Deno.serve(async (req) => {
 
   const clients = makeClients()
   if (!clients) {
-    console.error('[reconcile] missing STRIPE_SECRET_KEY / SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY')
+    console.error('[reconcile] missing Stripe/Supabase billing configuration')
     return new Response('not configured', { status: 500 })
   }
-  const { stripe, admin } = clients
+  const { stripe, admin, prices } = clients
   const now = Date.now()
 
   // Candidate rows: still in an access-granting status with a sub id and a period end already in the
@@ -103,7 +105,7 @@ Deno.serve(async (req) => {
   for (const r of stale) {
     try {
       const sub = await stripe.subscriptions.retrieve(r.stripe_subscription_id as string)
-      const mapped = mapSubscriptionToRow(sub as unknown as StripeSubLike, r.user_id, PRICES)
+      const mapped = mapSubscriptionToRow(sub as unknown as StripeSubLike, r.user_id, prices)
       const { error: upErr } = await admin.from('subscriptions').upsert(mapped, { onConflict: 'user_id' })
       if (upErr) throw upErr
       synced++

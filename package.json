@@ -13,6 +13,7 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "check:legal": "node scripts/check-legal-placeholders.mjs",
+    "check:prod": "node scripts/check-production-readiness.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },

@@ -5,10 +5,7 @@
 import * as Sentry from '@sentry/nextjs'
 import { registerTelemetrySink } from './src/lib/telemetry'
 
-// The DSN is a PUBLIC client key (write-only ingest — it ships in the browser bundle anyway), so it's
-// safe to commit as the default. Override per-environment with NEXT_PUBLIC_SENTRY_DSN if needed.
-const dsn = process.env.NEXT_PUBLIC_SENTRY_DSN ||
-  'https://60662eedc7853961107c5d4103bd03ab@o4511054322532352.ingest.us.sentry.io/4511633373921280'
+const dsn = process.env.NEXT_PUBLIC_SENTRY_DSN
 
 if (dsn) {
   Sentry.init({

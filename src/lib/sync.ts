@@ -67,6 +67,18 @@ function writeClock(ts: number) {
   }
 }
 
+/** Clear per-account sync metadata after the local app state is intentionally scrubbed. */
+export function clearSyncMetadata(): void {
+  clientUpdatedAt = 0
+  lastPushedJson = ''
+  lastPushAt = 0
+  try {
+    localStorage.removeItem(META_KEY)
+  } catch {
+    /* storage unavailable — in-memory reset above is enough for this session */
+  }
+}
+
 /**
  * Strictly-increasing sync clock. Using `Date.now()` alone can move the clock BACKWARD — below a value
  * this device previously synced or adopted from the cloud (another device wrote with a slightly-ahead
@@ -227,8 +239,8 @@ export async function startSync(uid: string): Promise<void> {
   }
 }
 
-/** Stop syncing (sign-out): flush a final push, then detach. */
-export async function stopSync(): Promise<void> {
+/** Stop syncing. By default this flushes once before detaching; destructive account deletion skips it. */
+export async function stopSync(opts: { flush?: boolean } = {}): Promise<void> {
   if (pushTimer) {
     clearTimeout(pushTimer)
     pushTimer = null
@@ -237,7 +249,7 @@ export async function stopSync(): Promise<void> {
     clearTimeout(pushRetry)
     pushRetry = null
   }
-  await pushNow() // best-effort final flush
+  if (opts.flush !== false) await pushNow() // best-effort final flush
   unsubscribe?.()
   unsubscribe = null
   detachVisibility?.()

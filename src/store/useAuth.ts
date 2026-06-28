@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { supabase } from '../lib/supabase'
-import { startSync, stopSync } from '../lib/sync'
+import { clearSyncMetadata, startSync, stopSync } from '../lib/sync'
 import { emailValid, passwordIssue, normalizeEmail } from '../lib/auth'
 import { reportError } from '../lib/telemetry'
 import { runAuthBootstrap } from './authBootstrap'
@@ -56,6 +56,24 @@ export interface AuthState {
 }
 
 let bootstrapped = false
+
+function clearLocalAppData() {
+  useStore.getState().resetAll()
+  clearSyncMetadata()
+}
+
+async function functionErrorMessage(error: unknown): Promise<string | null> {
+  try {
+    const ctx = (error as { context?: Response }).context
+    if (ctx && typeof ctx.json === 'function') {
+      const body = (await ctx.json()) as { error?: string }
+      if (body?.error) return body.error
+    }
+  } catch {
+    /* fall through to generic handling */
+  }
+  return null
+}
 
 export const useAuth = create<AuthState>((set) => ({
   email: null,
@@ -195,16 +213,18 @@ export const useAuth = create<AuthState>((set) => ({
   },
 
   signOut: async () => {
-    // never leave the user stuck "signed in" on a network error — always tear down local session state
+    // Flush while the old uid is still attached, then scrub device-local app state so a shared browser
+    // cannot leak one account's workouts/profile into the next account that signs in.
+    await stopSync()
     try {
       if (supabase) await supabase.auth.signOut()
     } catch (e) {
       // ignore network/identity errors (we still clear the local session below), but surface it
       reportError(e, { scope: 'auth.signOut' })
     }
-    await stopSync()
+    clearLocalAppData()
     // back to the sign-in screen (account required — no local fallback for a configured build)
-    set({ email: null, localOnly: false, recovering: false })
+    set({ email: null, localOnly: false, pending: null, recovering: false })
   },
 
   deleteAccount: async () => {
@@ -218,17 +238,23 @@ export const useAuth = create<AuthState>((set) => ({
       reportError(e, { scope: 'auth.deleteAccount' })
       return e instanceof Error ? e.message : 'Could not reach the server. Please try again.'
     }
-    if (res.error) return res.error.message || 'Could not delete your account. Please try again.'
+    if (res.error) {
+      return (
+        (await functionErrorMessage(res.error)) ||
+        res.error.message ||
+        'Could not delete your account. Please try again.'
+      )
+    }
     const body = res.data as { ok?: boolean; error?: string } | null
     if (body?.error) return body.error
     // account + cloud data are gone server-side — tear everything down locally
-    await stopSync()
+    await stopSync({ flush: false })
     try {
       await supabase.auth.signOut()
     } catch {
       /* the user no longer exists server-side; clearing the local session is enough */
     }
-    useStore.getState().resetAll()
+    clearLocalAppData()
     set({ email: null, localOnly: false, pending: null, recovering: false })
     return null
   },

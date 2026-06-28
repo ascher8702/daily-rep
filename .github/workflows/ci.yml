@@ -1,8 +1,7 @@
 name: CI
 
-# Gate every push/PR on the same checks the loop runs locally: lint, typecheck, tests, and a real
-# production build. An advisory legal-placeholder check runs too (non-blocking until counsel fills the
-# Privacy/Terms placeholders; it becomes a BLOCKING pre-deploy gate — see docs/runbook-deploy.md).
+# Gate every push/PR on the same checks the loop runs locally: lint, typecheck, tests, legal/prod
+# readiness guards, and a real production build.
 #
 # [HUMAN] required before this is effective: (1) git init + push this repo to GitHub, (2) add repo
 # Secrets NEXT_PUBLIC_SUPABASE_URL + NEXT_PUBLIC_SUPABASE_ANON_KEY (the build fail-fasts without them in
@@ -39,18 +38,17 @@ jobs:
       - name: Unit tests
         run: pnpm test
 
+      - name: Legal placeholder check
+        run: pnpm check:legal
+
+      - name: Production readiness guard
+        run: pnpm check:prod
+
       - name: Production build
         run: pnpm build
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
-
-      # Advisory until counsel fills the Privacy/Terms placeholders. continue-on-error keeps it from
-      # blocking unrelated PRs; it is enforced as a BLOCKING gate before production deploy
-      # (see docs/runbook-deploy.md). Flip to blocking (remove continue-on-error) at go-live.
-      - name: Legal placeholder check (advisory)
-        run: pnpm check:legal
-        continue-on-error: true
 
   # Edge-function (Deno) money-path tests — covers the shared subscription mapper / reconcile predicate
   # used by stripe-webhook + reconcile-subscriptions. The same logic is also vitest-covered in `verify`.

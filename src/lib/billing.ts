@@ -70,12 +70,12 @@ export function deriveEntitlement(
   row: SubscriptionRow | null,
   now: number = Date.now(),
 ): Omit<Entitlement, 'loading'> {
-  // No row yet (signup trigger hasn't landed, or provisioning gap). Fail OPEN so a brand-new user is
-  // never locked out — a genuinely lapsed user ALWAYS has a row (status persists), and RLS forbids
-  // users from deleting their row, so this branch can't be abused to dodge the paywall.
+  // No row means the server cannot prove access. The signup trigger should create a row in the same
+  // transaction as the user; failing closed prevents cache-clearing/request-blocking from bypassing the
+  // paid gate and makes provisioning faults observable.
   if (!row) {
     return {
-      entitled: true,
+      entitled: false,
       inTrial: false,
       trialDaysLeft: 0,
       hasSubscription: false,

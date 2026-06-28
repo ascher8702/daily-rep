@@ -933,10 +933,9 @@ set search_path = pg_catalog, public
 as $$
   select case
     when (select auth.uid()) is null then false
-    -- Fail OPEN when no row exists yet (signup-trigger provisioning gap) so a brand-new user is never
-    -- locked out of their first sync. A genuinely lapsed user ALWAYS has a row (status persists), and
-    -- users cannot delete their subscriptions row (no delete policy), so this branch can't be abused.
-    when not exists (select 1 from public.subscriptions where user_id = (select auth.uid())) then true
+    -- Missing subscription rows fail closed. The signup trigger should create a row in the same
+    -- transaction as the auth user; if it does not, access cannot be proven.
+    when not exists (select 1 from public.subscriptions where user_id = (select auth.uid())) then false
     else exists (
       select 1
       from public.subscriptions s
@@ -1188,4 +1187,3 @@ insert into public.exercise_facts (exercise_id, is_bodyweight_lift, regions) val
 on conflict (exercise_id) do update
   set is_bodyweight_lift = excluded.is_bodyweight_lift,
       regions            = excluded.regions;
-
