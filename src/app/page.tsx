@@ -6,6 +6,7 @@ import type { Equipment, MuscleGroup } from '@/types'
 import { useStore, resolvePlan } from '@/store/useStore'
 import { computeRecovery, freshnessFromFatigue, recoveryLabel, recoveryToken } from '@/lib/recovery'
 import { generateWorkout } from '@/lib/generator'
+import { injuryConstraints, isBlockedByInjury } from '@/lib/injuries'
 import { resolvePlanLifts } from '@/lib/substitution'
 import { computeWeeklyStreak, localWeek } from '@/lib/stats'
 import { fmtDate, fmtDuration, fmtWeight } from '@/lib/format'
@@ -123,12 +124,12 @@ export default function HomeScreen() {
     if (planDay.lifts?.length) {
       const owned = new Set<Equipment>([...profile.equipment, 'bodyweight'])
       let resolved = resolvePlanLifts(planDay.lifts, owned, planDay.goal ?? profile.goal).resolved
-      // mirror the build: when "apply to plans" is on, drop avoided-primary lifts from the preview too
-      if (profile.avoidInPlans && profile.avoidMuscles?.length) {
-        const avoid = new Set(profile.avoidMuscles)
+      // mirror the build (resolveDayLifts): on plan days, drop lifts the user opted to work around in plans
+      const previewConstraints = injuryConstraints(profile, { surface: 'plan' })
+      if (previewConstraints.hasConstraints) {
         resolved = resolved.filter(({ exerciseId }) => {
           const ex = getExercise(exerciseId)
-          return !ex || !ex.primary.some((m) => avoid.has(m))
+          return !ex || !isBlockedByInjury(ex, previewConstraints)
         })
       }
       if (resolved.length >= Math.min(3, planDay.lifts.length)) {
@@ -148,6 +149,8 @@ export default function HomeScreen() {
       focusOverride: planDay.focus,
       equipmentOverride: planEquipment(plan),
       goalOverride: planDay.goal,
+      // mirror generateFromPlan's fallback so the preview matches the build
+      surface: 'plan',
     })
     return {
       adapted: !!planDay.lifts?.length, // had named lifts but none equipped → adapted to gear

@@ -42,6 +42,9 @@ function workoutFatigue(w: Workout): RecoveryMap {
   for (const we of w.exercises) {
     const ex = getExercise(we.exerciseId)
     if (!ex) continue
+    // Rehab/therapeutic work is restorative by design — it shouldn't deposit training fatigue (and so
+    // shouldn't make the engine think the injured area now needs MORE rest before it can be trained).
+    if (ex.category === 'rehab') continue
     const workingSets = (we.sets ?? []).filter((s) => s.done && !s.warmup)
     if (workingSets.length === 0) continue
 

@@ -2,9 +2,13 @@ import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import type {
   ActivePlan,
+  Avoidance,
+  AvoidanceTarget,
   Equipment,
   Goal,
   Experience,
+  Injury,
+  InjurySeverity,
   MuscleGroup,
   Profile,
   Unit,
@@ -12,6 +16,8 @@ import type {
   WorkoutExercise,
   LoggedSet,
 } from '../types'
+import { VALID_REGIONS, REGIONS, injuryConstraints, isBlockedByInjury } from '../lib/injuries'
+import { ALL_MUSCLES } from '../data/muscles'
 import { generateWorkout, shouldWarmup, warmupSets, type GenerateOptions } from '../lib/generator'
 import { prescribe } from '../lib/progression'
 import { startingWeight, isBodyweightExercise } from '../lib/weights'
@@ -43,7 +49,7 @@ const DEFAULT_PROFILE: Profile = {
   ],
   sessionLength: 50,
   focusMuscles: [],
-  avoidMuscles: [],
+  avoiding: [],
   daysPerWeek: 3,
   onboarded: false,
 }
@@ -82,8 +88,21 @@ export interface AppState {
   setUnit: (u: Unit) => void
   toggleEquipment: (e: Equipment) => void
   toggleFocusMuscle: (m: MuscleGroup) => void
-  /** toggle a muscle the user is "working around" (injury/soreness); mutually exclusive with focus */
-  toggleAvoidMuscle: (m: MuscleGroup) => void
+
+  // ---- "working around" — the unified injury + muscle-preference list (Profile.avoiding) ----
+  /** add an INJURY (region or muscle target). includeInPlans follows severity (mild off, moderate/severe
+   *  on). Returns the new id. */
+  addInjuryAvoidance: (target: AvoidanceTarget, severity: InjurySeverity, note?: string) => string
+  /** add a plain muscle PREFERENCE ("skip this muscle"). includeInPlans defaults OFF. Returns the id. */
+  addMusclePreference: (muscle: MuscleGroup, note?: string) => string
+  /** edit a row in place: an injury's severity, any row's note or per-item include-in-plans flag */
+  updateAvoidance: (id: string, patch: { severity?: InjurySeverity; note?: string; includeInPlans?: boolean }) => void
+  /** toggle an INJURY row between active and recovered (preferences have no "recovered" state) */
+  toggleAvoidanceResolved: (id: string) => void
+  /** permanently remove a row */
+  removeAvoidance: (id: string) => void
+  /** turn a "skip this muscle" preference into a muscle-anchored injury (gains severity + rehab) */
+  convertPreferenceToInjury: (id: string, severity: InjurySeverity) => void
 
   // ---- generation / session lifecycle ----
   generate: (opts?: GenerateOptions) => void
@@ -200,6 +219,117 @@ function boundedNum(
   return round ? Math.round(clamped) : clamped
 }
 
+const VALID_MUSCLES = new Set<MuscleGroup>(ALL_MUSCLES)
+const oneSeverity = (s: unknown): InjurySeverity =>
+  s === 'mild' || s === 'moderate' || s === 'severe' ? s : 'moderate'
+const cleanNote = (n: unknown): string | undefined =>
+  typeof n === 'string' && n.trim() ? n.trim() : undefined
+const finiteTs = (n: unknown, fallback: number): number =>
+  typeof n === 'number' && Number.isFinite(n) ? n : fallback
+// a POSITIVE timestamp only: a bogus resolvedAt:0 is falsy, so activeAvoidances (which gates on
+// !resolvedAt) would otherwise treat a "resolved at epoch 0" row as still active
+const positiveTs = (n: unknown): number | undefined =>
+  typeof n === 'number' && Number.isFinite(n) && n > 0 ? n : undefined
+
+/** A moderate/severe injury should automatically apply to the user's structured plans; a mild niggle
+ *  stays out unless they opt in. One rule for the per-item includeInPlans default + auto-escalation. */
+const plansDefaultFor = (severity: InjurySeverity): boolean => severity !== 'mild'
+
+/**
+ * Coerce a persisted `avoiding` array, dropping malformed rows but keeping every well-formed KIND —
+ * region injury, muscle injury, AND plain preference. It must NOT hard-drop rows that lack a region (the
+ * old sanitizeInjuries did, which would silently delete muscle-injuries and preferences on rehydrate).
+ * Returns undefined when the input isn't an array.
+ */
+function sanitizeAvoidances(raw: unknown): Avoidance[] | undefined {
+  if (!Array.isArray(raw)) return undefined
+  const out: Avoidance[] = []
+  for (const v of raw) {
+    if (!v || typeof v !== 'object') continue
+    const a = v as Record<string, unknown>
+    const id = typeof a.id === 'string' && a.id ? a.id : uid('av')
+    const createdAt = finiteTs(a.createdAt, Date.now())
+    const common = {
+      id,
+      createdAt,
+      ...(cleanNote(a.note) ? { note: cleanNote(a.note) } : {}),
+      ...(positiveTs(a.resolvedAt) ? { resolvedAt: positiveTs(a.resolvedAt) } : {}),
+    }
+    if (a.kind === 'preference') {
+      if (!VALID_MUSCLES.has(a.muscle as MuscleGroup)) continue
+      out.push({
+        ...common,
+        kind: 'preference',
+        muscle: a.muscle as MuscleGroup,
+        ...(typeof a.includeInPlans === 'boolean' ? { includeInPlans: a.includeInPlans } : {}),
+      })
+    } else if (a.kind === 'injury') {
+      const t = a.target as { type?: string; region?: MuscleGroup; muscle?: MuscleGroup } | undefined
+      const target: AvoidanceTarget | null =
+        t?.type === 'region' && VALID_REGIONS.has(t.region as never)
+          ? { type: 'region', region: t.region as never }
+          : t?.type === 'muscle' && VALID_MUSCLES.has(t.muscle as MuscleGroup)
+            ? { type: 'muscle', muscle: t.muscle as MuscleGroup }
+            : null
+      if (!target) continue
+      out.push({
+        ...common,
+        kind: 'injury',
+        target,
+        severity: oneSeverity(a.severity),
+        includeInPlans: typeof a.includeInPlans === 'boolean' ? a.includeInPlans : true,
+      })
+    }
+    // unknown kind → drop
+  }
+  return out
+}
+
+/**
+ * Build `Profile.avoiding` for the merge path. If the blob already has a migrated `avoiding`, sanitize
+ * and keep it. Otherwise fold the three LEGACY fields losslessly: each region injury → an injury row
+ * (includeInPlans ON, matching the old "injuries always apply to plans"); each avoidMuscles entry → a
+ * preference row carrying the OLD global avoidInPlans onto its per-item flag; preferences whose muscle is
+ * already covered by an ACTIVE injury region are deduped. Idempotent (every emitted row carries `kind`).
+ */
+function migrateAvoiding(p: Partial<Profile>): Avoidance[] {
+  const already = sanitizeAvoidances((p as { avoiding?: unknown }).avoiding)
+  // A non-empty migrated array wins. An EMPTY one only wins when there's no legacy data to fold —
+  // otherwise (a corrupt/imported blob carrying avoiding:[] AND legacy fields) we must still migrate the
+  // legacy data rather than silently discard it.
+  if (already && (already.length > 0 || (!p.injuries && !p.avoidMuscles && p.avoidInPlans == null))) return already
+
+  const out: Avoidance[] = []
+  const coveredMuscles = new Set<MuscleGroup>()
+  for (const raw of Array.isArray(p.injuries) ? p.injuries : []) {
+    if (!raw || typeof raw !== 'object') continue
+    const i = raw as Partial<Injury>
+    if (!i.region || !VALID_REGIONS.has(i.region)) continue
+    const severity = oneSeverity(i.severity)
+    const resolvedAt = positiveTs(i.resolvedAt)
+    out.push({
+      id: typeof i.id === 'string' && i.id ? i.id : uid('av'),
+      kind: 'injury',
+      target: { type: 'region', region: i.region },
+      severity,
+      ...(cleanNote(i.note) ? { note: cleanNote(i.note) } : {}),
+      createdAt: finiteTs(i.createdAt, Date.now()),
+      ...(resolvedAt ? { resolvedAt } : {}),
+      includeInPlans: plansDefaultFor(severity),
+    })
+    // Only dedupe a preference against muscles the injury actually avoids as a PRIMARY mover. A MILD
+    // region injury avoids only the aggravating movement PATTERNS (not the muscle), so it must NOT
+    // swallow a muscle preference the user explicitly set — that would silently relax their constraint.
+    if (!resolvedAt && severity !== 'mild') for (const m of REGIONS[i.region].muscles) coveredMuscles.add(m)
+  }
+  const includeInPlans = !!p.avoidInPlans
+  for (const m of Array.isArray(p.avoidMuscles) ? p.avoidMuscles : []) {
+    if (!VALID_MUSCLES.has(m) || coveredMuscles.has(m)) continue
+    out.push({ id: uid('av'), kind: 'preference', muscle: m, createdAt: Date.now(), includeInPlans })
+  }
+  return out
+}
+
 
 function defaultSchemeForNewExercise(
   exerciseId: string,
@@ -290,14 +420,15 @@ export function resolveDayLifts(day: PlanDay, profile: Profile, overrides: Recor
     return { ...l, planLiftId: l.exerciseId, exerciseId: to && to !== l.exerciseId ? to : l.exerciseId }
   })
   let resolved = resolvePlanLifts(lifts, owned, goal).resolved
-  // opt-in: extend "working around" to plan lifts — drop any whose PRIMARY mover is an avoided muscle.
-  // (If this thins the day out, generateFromPlan falls back to focus-based generation, which already
-  // respects avoidMuscles.) Off by default so a program keeps its structure unless the user opts in.
-  if (profile.avoidInPlans && profile.avoidMuscles?.length) {
-    const avoid = new Set(profile.avoidMuscles)
+  // Train around the user's "working around" list on plan days too — drop any lift blocked by the unified
+  // constraint set. The 'plan' surface folds in only rows the user opted into plans (each row's
+  // includeInPlans). If this thins the day out, generateFromPlan falls back to focus-based generation,
+  // which respects the same surface. See lib/injuries.
+  const planConstraints = injuryConstraints(profile, { surface: 'plan' })
+  if (planConstraints.hasConstraints) {
     resolved = resolved.filter(({ exerciseId }) => {
       const ex = getExercise(exerciseId)
-      return !ex || !ex.primary.some((m) => avoid.has(m))
+      return !ex || !isBlockedByInjury(ex, planConstraints)
     })
   }
   return { resolved, goal }
@@ -635,7 +766,12 @@ export function mergePersisted(persisted: unknown, current: AppState): AppState 
       unit: oneOf(profile.unit, VALID_UNITS, current.profile.unit),
       equipment: Array.isArray(profile.equipment) ? profile.equipment : current.profile.equipment,
       focusMuscles: Array.isArray(profile.focusMuscles) ? profile.focusMuscles : current.profile.focusMuscles,
-      avoidMuscles: Array.isArray(profile.avoidMuscles) ? profile.avoidMuscles : current.profile.avoidMuscles,
+      // the unified "working around" list — folds legacy injuries[]/avoidMuscles[]/avoidInPlans in once
+      avoiding: migrateAvoiding(profile),
+      // …and drop the legacy fields from the blob going forward (migrateAvoiding has absorbed them)
+      avoidMuscles: undefined,
+      avoidInPlans: undefined,
+      injuries: undefined,
       // clamp persisted numerics so a corrupt blob can't feed NaN/Infinity/negative/absurd values into
       // restSecondsFor / the generator / effectiveLoad. Bodyweight bound is unit-agnostic (kg & lb),
       // so it's generous — just rejecting garbage, not validating the exact figure.
@@ -714,20 +850,113 @@ export const useStore = create<AppState>()(
           const focusMuscles = has
             ? s.profile.focusMuscles.filter((x) => x !== m)
             : [...s.profile.focusMuscles, m]
-          // emphasizing a muscle clears it from "working around" — the two intents are exclusive
-          const avoidMuscles = has ? s.profile.avoidMuscles : (s.profile.avoidMuscles ?? []).filter((x) => x !== m)
-          return { profile: { ...s.profile, focusMuscles, avoidMuscles } }
+          // emphasizing a muscle clears any plain "skip this muscle" preference for it (exclusive intents);
+          // a real injury is deliberate, so injury rows are left alone
+          const avoiding = has
+            ? s.profile.avoiding
+            : s.profile.avoiding.filter((a) => !(a.kind === 'preference' && a.muscle === m))
+          return { profile: { ...s.profile, focusMuscles, avoiding } }
         }),
 
-      toggleAvoidMuscle: (m) =>
+      addInjuryAvoidance: (target, severity, note) => {
+        const trimmed = note?.trim()
+        const row: Avoidance = {
+          id: uid('av'),
+          kind: 'injury',
+          target,
+          severity,
+          createdAt: Date.now(),
+          // moderate/severe auto-apply to plans; mild stays out unless the user opts in
+          includeInPlans: plansDefaultFor(severity),
+          ...(trimmed ? { note: trimmed } : {}),
+        }
         set((s) => {
-          const avoid = s.profile.avoidMuscles ?? []
-          const has = avoid.includes(m)
-          const avoidMuscles = has ? avoid.filter((x) => x !== m) : [...avoid, m]
-          // working around a muscle clears it from "emphasize" — the two intents are exclusive
-          const focusMuscles = has ? s.profile.focusMuscles : s.profile.focusMuscles.filter((x) => x !== m)
-          return { profile: { ...s.profile, avoidMuscles, focusMuscles } }
-        }),
+          // a muscle-injury supersedes any plain preference / emphasis on that same muscle
+          const isMuscle = target.type === 'muscle'
+          const avoiding = isMuscle
+            ? s.profile.avoiding.filter((a) => !(a.kind === 'preference' && a.muscle === target.muscle))
+            : s.profile.avoiding
+          const focusMuscles = isMuscle
+            ? s.profile.focusMuscles.filter((x) => x !== target.muscle)
+            : s.profile.focusMuscles
+          return { profile: { ...s.profile, focusMuscles, avoiding: [row, ...avoiding] } }
+        })
+        return row.id
+      },
+      addMusclePreference: (muscle, note) => {
+        const trimmed = note?.trim()
+        const row: Avoidance = {
+          id: uid('av'),
+          kind: 'preference',
+          muscle,
+          createdAt: Date.now(),
+          includeInPlans: false, // a mere preference stays out of structured plans unless opted in
+          ...(trimmed ? { note: trimmed } : {}),
+        }
+        set((s) => {
+          // ignore a duplicate active preference; clear any emphasis on the muscle
+          if (s.profile.avoiding.some((a) => a.kind === 'preference' && a.muscle === muscle && !a.resolvedAt)) return {}
+          const focusMuscles = s.profile.focusMuscles.filter((x) => x !== muscle)
+          return { profile: { ...s.profile, focusMuscles, avoiding: [row, ...s.profile.avoiding] } }
+        })
+        return row.id
+      },
+      updateAvoidance: (id, patch) =>
+        set((s) => ({
+          profile: {
+            ...s.profile,
+            avoiding: s.profile.avoiding.map((a) => {
+              if (a.id !== id) return a
+              const note = 'note' in patch ? patch.note?.trim() || undefined : a.note
+              // an explicit includeInPlans wins; otherwise escalating to moderate/severe auto-turns it on
+              const includeInPlans =
+                typeof patch.includeInPlans === 'boolean'
+                  ? patch.includeInPlans
+                  : a.kind === 'injury' && (patch.severity === 'moderate' || patch.severity === 'severe')
+                    ? true
+                    : a.includeInPlans
+              // severity only applies to injuries
+              return a.kind === 'injury'
+                ? { ...a, severity: patch.severity ?? a.severity, note, includeInPlans }
+                : { ...a, note, includeInPlans }
+            }),
+          },
+        })),
+      toggleAvoidanceResolved: (id) =>
+        set((s) => ({
+          profile: {
+            ...s.profile,
+            avoiding: s.profile.avoiding.map((a) =>
+              // only injuries have a "recovered" state; preferences are add/remove only
+              a.id === id && a.kind === 'injury'
+                ? { ...a, resolvedAt: a.resolvedAt ? undefined : Date.now() }
+                : a,
+            ),
+          },
+        })),
+      removeAvoidance: (id) =>
+        set((s) => ({
+          profile: { ...s.profile, avoiding: s.profile.avoiding.filter((a) => a.id !== id) },
+        })),
+      convertPreferenceToInjury: (id, severity) =>
+        set((s) => ({
+          profile: {
+            ...s.profile,
+            avoiding: s.profile.avoiding.map((a) =>
+              a.id === id && a.kind === 'preference'
+                ? {
+                    id: a.id,
+                    kind: 'injury',
+                    target: { type: 'muscle', muscle: a.muscle },
+                    severity,
+                    createdAt: a.createdAt,
+                    includeInPlans: plansDefaultFor(severity),
+                    ...(a.note ? { note: a.note } : {}),
+                  }
+                : a,
+            ),
+          },
+        })),
 
       generate: (opts) => {
         const { profile, workouts } = get()
@@ -924,6 +1153,8 @@ export const useStore = create<AppState>()(
             equipmentOverride: planEquipment(plan),
             goalOverride: day.goal,
             shuffle,
+            // match resolveDayLifts: only rows opted into plans constrain a structured day
+            surface: 'plan',
           })
           w.title = day.title
           w.focus = day.focus.slice(0, 3)

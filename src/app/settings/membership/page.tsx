@@ -6,23 +6,9 @@ import { useEntitlement } from '@/store/useEntitlement'
 import { setAutoRenew, openBillingPortal, startCheckout, PRICING } from '@/lib/billing'
 import { emitToast } from '@/lib/toast'
 import { BackHeader, SectionLabel } from '@/components/settings/ui'
+import { Toggle } from '@/components/ui/Toggle'
 import { BoltMark, BlazeCta } from '@/components/billing/shared'
 import { CardIcon, ChevronRight, LockIcon } from '@/components/icons'
-
-function Toggle({ on, onClick, disabled }: { on: boolean; onClick: () => void; disabled?: boolean }) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={on}
-      onClick={onClick}
-      disabled={disabled}
-      className={`relative w-12 h-[29px] rounded-full shrink-0 transition disabled:opacity-60 ${on ? 'bg-gradient-blaze shadow-button' : 'bg-raised border border-hairline/15'}`}
-    >
-      <span className={`absolute top-[3px] h-[23px] w-[23px] rounded-full transition-all ${on ? 'right-[3px] bg-white' : 'left-[3px] bg-fg/55'}`} />
-    </button>
-  )
-}
 
 /** "Turn off auto-renew?" bottom sheet — framed as reversible, not a scary cancel. */
 function ConfirmSheet({ endDate, busy, onKeep, onTurnOff }: { endDate: string; busy: boolean; onKeep: () => void; onTurnOff: () => void }) {
@@ -181,7 +167,7 @@ export default function MembershipPage() {
                   : 'Off — Pro ends at the period end. Turn back on to keep it.'}
             </div>
           </div>
-          <Toggle on={autoRenew} onClick={onToggle} disabled={busy === 'toggle'} />
+          <Toggle on={autoRenew} onChange={onToggle} disabled={busy === 'toggle'} />
         </div>
         {ent.cancelAtPeriodEnd && (
           <button onClick={() => applyAutoRenew(true)} disabled={busy === 'toggle'} className="w-full mt-3.5 rounded-[14px] bg-gradient-blaze text-on-accent font-black text-[15px] uppercase tracking-[0.03em] py-[15px] shadow-button-lg active:scale-[0.99] disabled:opacity-60 transition">

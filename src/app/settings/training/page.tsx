@@ -1,10 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import type { Equipment, Experience, Goal, MuscleGroup, Unit } from '@/types'
 import { useStore, restSecondsFor } from '@/store/useStore'
 import { ALL_MUSCLES, MUSCLES } from '@/data/muscles'
 import { BackHeader, SectionLabel, Tile, Chip } from '@/components/settings/ui'
+import { HeartPulseIcon, ChevronRight } from '@/components/icons'
 
 const GOALS: { id: Goal; label: string; full?: boolean }[] = [
   { id: 'strength', label: 'Get Stronger' },
@@ -41,8 +42,7 @@ export default function TrainingPreferencesPage() {
   const setUnit = useStore((s) => s.setUnit)
   const toggleEquipment = useStore((s) => s.toggleEquipment)
   const toggleFocusMuscle = useStore((s) => s.toggleFocusMuscle)
-  const toggleAvoidMuscle = useStore((s) => s.toggleAvoidMuscle)
-  const avoidMuscles = profile.avoidMuscles ?? []
+  const router = useRouter()
 
   return (
     <div className="bg-bg min-h-[100dvh] text-fg animate-fade-in">
@@ -135,57 +135,20 @@ export default function TrainingPreferencesPage() {
           <p className="text-[11px] text-fg/40 mt-2">We’ll give these muscles a little extra priority.</p>
         </section>
 
-        <section>
-          <SectionLabel className="mb-2.5">Working around</SectionLabel>
-          <div className="flex flex-wrap gap-2">
-            {ALL_MUSCLES.map((m: MuscleGroup) => {
-              const active = avoidMuscles.includes(m)
-              return (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => toggleAvoidMuscle(m)}
-                  aria-pressed={active}
-                  className={`text-[13px] rounded-full px-3.5 py-2.5 border transition ${
-                    active
-                      ? 'font-extrabold text-rose-300 bg-rose-400/[0.12] border-rose-400/50'
-                      : 'font-semibold text-fg/65 bg-raised border-hairline/[0.06]'
-                  }`}
-                >
-                  {MUSCLES[m].label}
-                </button>
-              )
-            })}
+        {/* Injuries & muscles to work around now live in their own screen (with rehab guidance). */}
+        <button
+          onClick={() => router.push('/settings/injuries')}
+          className="w-full flex items-center gap-3 rounded-2xl bg-card border border-hairline/10 p-4 text-left active:scale-[0.99] transition"
+        >
+          <span className="grid place-items-center h-9 w-9 rounded-[10px] bg-blaze/[0.12] text-blaze-label shrink-0">
+            <HeartPulseIcon size={18} strokeWidth={1.9} />
+          </span>
+          <div className="flex-1 min-w-0">
+            <div className="text-[14px] font-bold">Injuries</div>
+            <div className="text-[11.5px] text-fg/45">Train around an injury, with recovery work</div>
           </div>
-          <p className="text-[11px] text-fg/40 mt-2">
-            Injured or sore? Auto-built workouts skip exercises that mainly target these. Not medical advice — train safely.
-          </p>
-
-          <div className="mt-3.5 flex items-center justify-between gap-3 rounded-2xl bg-card border border-hairline/10 p-4">
-            <div className="min-w-0">
-              <div className="text-[13px] font-semibold text-fg/80">Apply to plan workouts</div>
-              <div className="text-[11px] text-fg/40 mt-0.5">
-                Also drop these from structured plan days. Off keeps a program intact; you’ll still get a heads-up when a session targets them.
-              </div>
-            </div>
-            {(() => {
-              const on = profile.avoidInPlans ?? false
-              return (
-                <button
-                  role="switch"
-                  aria-checked={on}
-                  aria-label="Apply working-around muscles to plan workouts"
-                  onClick={() => updateProfile({ avoidInPlans: !on })}
-                  className={`relative h-7 w-12 shrink-0 rounded-full transition ${on ? 'bg-rose-400' : 'bg-raised border border-hairline/15'}`}
-                >
-                  <span
-                    className={`absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-transform ${on ? 'translate-x-[1.375rem]' : 'translate-x-0.5'}`}
-                  />
-                </button>
-              )
-            })()}
-          </div>
-        </section>
+          <ChevronRight size={16} className="text-fg/35 shrink-0" />
+        </button>
       </div>
     </div>
   )

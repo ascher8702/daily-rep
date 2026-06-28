@@ -23,6 +23,7 @@ export const fullGymProfile: Profile = {
   equipment: [...FULL_EQUIPMENT],
   sessionLength: 50,
   focusMuscles: [],
+  avoiding: [],
   onboarded: true,
 }
 

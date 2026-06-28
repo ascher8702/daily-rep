@@ -1,4 +1,5 @@
 import type { Exercise } from '../types'
+import { REHAB_BY_ID } from './rehab'
 
 // A curated library covering every muscle group across equipment profiles.
 // instructions are short cueing steps shown on the exercise detail sheet.
@@ -595,5 +596,8 @@ export const EXERCISE_BY_ID: Record<string, Exercise> = Object.fromEntries(
 )
 
 export function getExercise(id: string): Exercise | undefined {
-  return EXERCISE_BY_ID[id]
+  // Resolve main-library lifts first, then fall back to the therapeutic catalogue so rehab work logged
+  // in a session (or shown on the detail sheet) renders — without ever entering the generator's pool,
+  // which only iterates EXERCISES. See data/rehab.
+  return EXERCISE_BY_ID[id] ?? REHAB_BY_ID[id]
 }

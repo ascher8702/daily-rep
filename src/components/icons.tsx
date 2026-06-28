@@ -38,6 +38,8 @@ import {
   CalendarDays,
   Mail,
   KeyRound,
+  HeartPulse,
+  TriangleAlert,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -91,3 +93,5 @@ export const SlidersIcon = icon(SlidersHorizontal)
 export const CalendarIcon = icon(CalendarDays)
 export const MailIcon = icon(Mail)
 export const KeyIcon = icon(KeyRound)
+export const HeartPulseIcon = icon(HeartPulse)
+export const AlertTriangleIcon = icon(TriangleAlert)

@@ -13,6 +13,7 @@ import type {
 import { EXERCISES, getExercise } from '../data/exercises'
 import { MUSCLES, ALL_MUSCLES } from '../data/muscles'
 import { computeRecovery, freshnessFromFatigue } from './recovery'
+import { injuryConstraints, isBlockedByInjury } from './injuries'
 import { isExerciseDoable } from './equipment'
 import { prescribe, type Prescription } from './progression'
 import { roundToAchievable, startingWeight } from './weights'
@@ -182,6 +183,10 @@ export interface GenerateOptions {
   equipmentOverride?: Equipment[]
   /** override the goal-driven set/rep scheme for this session (e.g. a plan's strength day) */
   goalOverride?: Goal
+  /** which surface is building — 'freebuild' (default) works around EVERY active avoidance; 'plan' only
+   *  the rows opted into plans. A plan-day focus-fallback passes 'plan' to match the explicit-lift
+   *  filter. See lib/injuries.injuryConstraints. */
+  surface?: 'freebuild' | 'plan'
 }
 
 /**
@@ -244,21 +249,23 @@ export function generateWorkout(
   const targetCount = Math.max(3, Math.min(9, Math.round(duration / 11)))
 
   // ---- 3. Score & greedily select exercises ----
-  // areas the user flagged to avoid (injury/preference): never program a lift that PRIMARILY trains one
-  const avoid = new Set<MuscleGroup>(profile.avoidMuscles ?? [])
-  const avoidsArea = (ex: Exercise): boolean => avoid.size > 0 && ex.primary.some((m) => avoid.has(m))
+  // Fold preference-avoids + active injuries into one constraint set: muscles to skip as a primary
+  // mover (and, for worse injuries, secondary too), plus aggravating movement patterns to drop. This
+  // is how the generator "trains around" an injury — see lib/injuries.
+  const constraints = injuryConstraints(profile, { surface: opts.surface })
+  const blocked = (ex: Exercise): boolean => constraints.hasConstraints && isBlockedByInjury(ex, constraints)
   let candidates = EXERCISES.filter(
     (ex) =>
       ex.difficulty <= cap &&
       isExerciseDoable(ex, owned) &&
-      !avoidsArea(ex) &&
+      !blocked(ex) &&
       // under an explicit focus, drop exercises that train none of the target muscles
       (!strictFocus || hitsTarget(ex)),
   )
-  // Never return an empty session: relax the focus filter first (still honoring avoided areas), then
-  // — only if there is still nothing doable — drop the avoid filter as a last resort.
+  // Never return an empty session: relax the focus filter first (still training around the injury),
+  // then — only if there is still nothing doable — drop the injury constraints as a last resort.
   if (candidates.length === 0) {
-    candidates = EXERCISES.filter((ex) => ex.difficulty <= cap && isExerciseDoable(ex, owned) && !avoidsArea(ex))
+    candidates = EXERCISES.filter((ex) => ex.difficulty <= cap && isExerciseDoable(ex, owned) && !blocked(ex))
   }
   if (candidates.length === 0) {
     candidates = EXERCISES.filter((ex) => ex.difficulty <= cap && isExerciseDoable(ex, owned))
@@ -317,7 +324,7 @@ export function generateWorkout(
   }
 
   // ---- 4. Order: compounds first, then isolation, core/cardio last ----
-  const order: Record<Exercise['category'], number> = { compound: 0, isolation: 1, core: 2, cardio: 3 }
+  const order: Record<Exercise['category'], number> = { compound: 0, isolation: 1, core: 2, cardio: 3, rehab: 4 }
   chosen.sort((a, b) => order[a.category] - order[b.category])
 
   // ---- 5. Build workout exercises with sets ----

@@ -11,8 +11,9 @@ import { useConfirm } from '@/components/ConfirmProvider'
 import { SectionLabel } from '@/components/settings/ui'
 import { BoltMark } from '@/components/billing/shared'
 import {
-  SlidersIcon, CalendarIcon, ShieldCheckIcon, MoonIcon, DownloadIcon, RefreshIcon, LockIcon, KeyIcon, ChevronRight,
+  SlidersIcon, CalendarIcon, ShieldCheckIcon, MoonIcon, DownloadIcon, RefreshIcon, LockIcon, KeyIcon, HeartPulseIcon, ChevronRight,
 } from '@/components/icons'
+import { activeAvoidances, avoidanceLabel } from '@/lib/injuries'
 
 function HubRow({
   icon, tint = 'neutral', title, sub, badge, onClick, last,
@@ -62,6 +63,10 @@ export default function SettingsPage() {
   const ent = useEntitlement()
 
   const initial = (profile.name.trim()[0] || 'A').toUpperCase()
+  const avoiding = activeAvoidances(profile)
+  const injurySub = avoiding.length
+    ? `Avoiding ${avoiding.map(avoidanceLabel).join(', ')}`
+    : 'Train around an injury or a sore area'
   const activePlanName = activePlan ? resolvePlan(activePlan.planId, customPlans)?.name : undefined
   const fmt = (iso: string | null) => (iso ? fmtDate(new Date(iso).getTime()) : '')
 
@@ -127,7 +132,8 @@ export default function SettingsPage() {
       <SectionLabel accent className="mt-[22px] mb-2.5">Training</SectionLabel>
       <Group>
         <HubRow icon={<SlidersIcon size={17} strokeWidth={1.9} />} tint="blaze" title="Training preferences" sub="Goal · experience · equipment" onClick={() => router.push('/settings/training')} />
-        <HubRow icon={<CalendarIcon size={17} strokeWidth={1.9} />} tint="blaze" title="Training plan" sub={activePlanName ? `Following ${activePlanName}` : 'Push/Pull/Legs, Upper/Lower and more'} onClick={() => router.push('/plans')} last />
+        <HubRow icon={<CalendarIcon size={17} strokeWidth={1.9} />} tint="blaze" title="Training plan" sub={activePlanName ? `Following ${activePlanName}` : 'Push/Pull/Legs, Upper/Lower and more'} onClick={() => router.push('/plans')} />
+        <HubRow icon={<HeartPulseIcon size={17} strokeWidth={1.9} />} tint="blaze" title="Injuries" sub={injurySub} badge={avoiding.length ? { label: `${avoiding.length}`, tone: 'rose' } : undefined} onClick={() => router.push('/settings/injuries')} last />
       </Group>
 
       <SectionLabel className="mt-[22px] mb-2.5">Account</SectionLabel>

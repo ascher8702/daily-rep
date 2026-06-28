@@ -30,10 +30,10 @@ export default function TermsOfServicePage() {
       </p>
       <p>
         Features such as recovery estimates, generated workouts, training plans, exercise substitutions, and
-        the “emphasize / working around” muscle preferences are{' '}
+        the injury and muscle-avoidance preferences are{' '}
         <strong>conveniences based on the information you provide, not medical guidance</strong>. They do not
-        detect, prevent, diagnose, or treat any injury or condition, and marking an area to “work around” does
-        not guarantee that a workout, plan, or recommendation will avoid loading or aggravating it. Always use
+        detect, prevent, diagnose, or treat any injury or condition, and flagging an injury or area to avoid
+        does not guarantee that a workout, plan, or recommendation will avoid loading or aggravating it. Always use
         your own judgment and a professional’s advice over anything the Service suggests.
       </p>
 
@@ -97,7 +97,7 @@ export default function TermsOfServicePage() {
         incidental, special, consequential, or punitive damages, arising out of or related to your use of the
         Service — including injuries connected to any exercise, weight, workout, training plan, exercise
         substitution, recovery estimate, or other recommendation generated or provided by the Service, and
-        including any failure of the “working around” / injury-avoidance preferences to exclude a given
+        including any failure of the injury / muscle-avoidance preferences to exclude a given
         movement. This applies regardless of the legal theory and even if we have been advised of the
         possibility of such damages. Where liability cannot be excluded, it is limited to the greater of the
         amount you paid for the Service in the 12 months before the claim or US$50. Some jurisdictions do not

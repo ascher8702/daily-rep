@@ -1,8 +1,9 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import type { Equipment, Experience, Goal, MuscleGroup, Profile, Unit } from '../types'
+import type { Avoidance, Equipment, Experience, Goal, MuscleGroup, Profile, Unit } from '../types'
 import { useStore } from '../store/useStore'
+import { uid } from '../lib/format'
 import { useAuth } from '../store/useAuth'
 import { nameFromEmail } from '../lib/auth'
 import { recommendPlans } from '../lib/planMatch'
@@ -136,6 +137,13 @@ export default function Onboarding() {
   const displayName = name.trim() || 'athlete'
   const canNext = step !== 4 || equipment.length > 0
 
+  // the "avoid" muscles become plain preference rows in the unified `avoiding` list (no injury/rehab —
+  // onboarding is a quick "skip these" pass; real injuries are added later in Settings → Working around)
+  const avoidanceRows = useMemo<Avoidance[]>(
+    () => avoid.map((muscle) => ({ id: uid('av'), kind: 'preference' as const, muscle, createdAt: Date.now(), includeInPlans: false })),
+    [avoid],
+  )
+
   // a profile snapshot for matching plans (uses the in-progress answers, not yet committed)
   const draftProfile = useMemo<Profile>(
     () => ({
@@ -145,14 +153,14 @@ export default function Onboarding() {
       unit,
       equipment,
       focusMuscles: focus,
-      avoidMuscles: avoid,
+      avoiding: avoidanceRows,
       bodyweight,
       gender,
       daysPerWeek,
       sessionLength,
       onboarded: false,
     }),
-    [name, gender, goal, experience, unit, equipment, focus, avoid, bodyweight, daysPerWeek, sessionLength],
+    [name, gender, goal, experience, unit, equipment, focus, avoidanceRows, bodyweight, daysPerWeek, sessionLength],
   )
   const catalogue = usePlansStore((s) => s.catalogue)
   const recommended = useMemo(() => recommendPlans(catalogue, draftProfile, { limit: 1 })[0], [catalogue, draftProfile])
@@ -165,7 +173,7 @@ export default function Onboarding() {
       unit,
       equipment,
       focusMuscles: focus.filter((m) => !avoid.includes(m)),
-      avoidMuscles: avoid,
+      avoiding: avoidanceRows,
       daysPerWeek,
       sessionLength,
       ...(gender ? { gender } : {}),
@@ -417,8 +425,8 @@ export default function Onboarding() {
 
         {step === 5 && (
           <Section
-            title="Emphasize or work around any areas?"
-            sub="Optional — set priorities, or flag an injury or sore spot to train around."
+            title="Emphasize or avoid any areas?"
+            sub="Optional — set priorities, or skip a muscle. Real injuries get richer options in Settings."
           >
             {/* Two clear intents via a mode toggle, so flagging an injury is direct rather than a
                 hidden second tap that first lights the muscle up as "emphasize". */}
@@ -445,7 +453,7 @@ export default function Onboarding() {
                   muscleMode === 'avoid' ? 'bg-rose-400/15 text-rose-300' : 'text-fg/55 active:text-fg/80'
                 }`}
               >
-                <BanGlyph /> Working around
+                <BanGlyph /> Avoid
               </button>
             </div>
 
@@ -464,7 +472,7 @@ export default function Onboarding() {
                     key={m}
                     onClick={() => applyMuscleMode(m)}
                     aria-pressed={emphasized || avoided}
-                    aria-label={`${MUSCLES[m].label}${emphasized ? ', emphasized' : avoided ? ', working around' : ''}`}
+                    aria-label={`${MUSCLES[m].label}${emphasized ? ', emphasized' : avoided ? ', avoided' : ''}`}
                     className={`inline-flex items-center gap-1.5 rounded-xl py-3 px-3 text-sm font-bold border text-left transition ${
                       emphasized
                         ? 'border-blaze/40 bg-blaze/10 text-blaze-label'
@@ -491,7 +499,7 @@ export default function Onboarding() {
                 )}
                 {avoid.length > 0 && (
                   <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-400/10 px-2.5 py-1 text-xs font-semibold text-rose-300">
-                    <BanGlyph /> Working around {avoid.length}
+                    <BanGlyph /> Avoiding {avoid.length}
                   </span>
                 )}
               </div>
@@ -523,7 +531,7 @@ export default function Onboarding() {
                   label="Muscles"
                   value={[
                     focus.length ? `↑ ${focus.length} emphasized` : '',
-                    avoid.length ? `⊘ ${avoid.length} working around` : '',
+                    avoid.length ? `⊘ ${avoid.length} avoided` : '',
                   ]
                     .filter(Boolean)
                     .join(' · ')}

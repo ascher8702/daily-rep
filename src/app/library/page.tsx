@@ -6,7 +6,9 @@ import { EXERCISES } from '@/data/exercises'
 import { ALL_MUSCLES, MUSCLES, muscleLabel } from '@/data/muscles'
 import { isExerciseDoable } from '@/lib/equipment'
 import { useStore, resolvePlan, planDayExerciseIds, activePlanDayContext } from '@/store/useStore'
+import { exerciseConflicts } from '@/lib/injuries'
 import { emitToast } from '@/lib/toast'
+import { useConfirm } from '@/components/ConfirmProvider'
 import Sheet from '@/components/Sheet'
 import { Button } from '@/components/ui/Button'
 import { Chip, ChipTag, type ChipVariant } from '@/components/ui/Chip'
@@ -45,6 +47,7 @@ const CATEGORY_LABEL: Record<ExerciseCategory, string> = {
   isolation: 'Isolation',
   core: 'Core',
   cardio: 'Cardio',
+  rehab: 'Recovery',
 }
 
 function equipmentLabel(e: Equipment): string {
@@ -61,6 +64,7 @@ function isAvailable(ex: Exercise, owned: Set<Equipment>): boolean {
 }
 
 export default function LibraryPage() {
+  const confirm = useConfirm()
   const profile = useStore((s) => s.profile)
   const current = useStore((s) => s.current)
   const activePlan = useStore((s) => s.activePlan)
@@ -134,10 +138,22 @@ export default function LibraryPage() {
 
   // Apply a toggle for a given scope. `forward` (plan days only) also edits the user's plan copy so the
   // change persists to future sessions of this day. Toasts confirm; removeExerciseToday shows an Undo.
-  const applyToggle = (ex: Exercise, forward: boolean) => {
+  const applyToggle = async (ex: Exercise, forward: boolean) => {
     const adding = !todayIds.has(ex.id)
     const built = !current // the store builds today's session on the first add
     if (adding) {
+      // working around this area? confirm the manual add — the generator already avoids these on its own
+      const conflicts = exerciseConflicts(ex, profile)
+      if (
+        conflicts.length > 0 &&
+        !(await confirm({
+          title: 'Add this anyway?',
+          body: `${ex.name} loads your ${conflicts.join(', ')}, which you’re avoiding. Add it anyway?`,
+          confirmLabel: 'Add anyway',
+          tone: 'danger',
+        }))
+      )
+        return
       addExerciseToday(ex.id, forward)
       emitToast(
         forward

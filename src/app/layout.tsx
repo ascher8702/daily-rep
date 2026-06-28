@@ -1,7 +1,9 @@
 import type { Metadata, Viewport } from 'next'
 import { Archivo, Hanken_Grotesk } from 'next/font/google'
+import { AntdRegistry } from '@ant-design/nextjs-registry'
 import './globals.css'
 import AppShell from './AppShell'
+import AntdProvider from '@/components/AntdProvider'
 import ServiceWorkerRegister from '@/components/ServiceWorkerRegister'
 import GlobalErrorTracker from '@/components/GlobalErrorTracker'
 
@@ -100,7 +102,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="font-sans">
         <GlobalErrorTracker />
         <ServiceWorkerRegister />
-        <AppShell>{children}</AppShell>
+        <AntdRegistry>
+          <AntdProvider>
+            <AppShell>{children}</AppShell>
+          </AntdProvider>
+        </AntdRegistry>
       </body>
     </html>
   )

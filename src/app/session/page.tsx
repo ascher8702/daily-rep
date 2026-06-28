@@ -7,6 +7,7 @@ import { useStore, resolvePlan } from '@/store/useStore'
 import { getExercise } from '@/data/exercises'
 import { planEquipment } from '@/data/plans'
 import { muscleLabel } from '@/data/muscles'
+import { injuryConstraints, isBlockedByInjury, avoidedAreaLabels, exerciseConflicts } from '@/lib/injuries'
 import { fmtDuration, fmtClock, fmtWeight, perSideLabel } from '@/lib/format'
 import { isBodyweightExercise } from '@/lib/weights'
 import { groupExercises, supersetLabel } from '@/lib/supersets'
@@ -78,20 +79,40 @@ function SessionView() {
   const isActive = current.status === 'active'
   const existingIds = current.exercises.map((e) => e.exerciseId)
 
-  // safety net: warn (once, dismissibly) when this session contains exercises that PRIMARILY train a
-  // muscle the user is working around — independent of the plan-filter setting, since they may follow
-  // an unfiltered plan or have added the exercise themselves
-  const avoidSet = new Set(profile.avoidMuscles ?? [])
-  const flaggedMuscles = avoidSet.size
+  // safety net: warn (once, dismissibly) when this session contains exercises that load an area the
+  // user is working around — a flagged injury OR a preference-avoided muscle — independent of any
+  // plan-filter setting, since they may follow an unfiltered plan or have added the exercise themselves
+  const avoidConstraints = injuryConstraints(profile)
+  const flaggedNames = avoidConstraints.hasConstraints
     ? [
         ...new Set(
           current.exercises
-            .flatMap((we) => getExercise(we.exerciseId)?.primary ?? [])
-            .filter((m) => avoidSet.has(m)),
+            .map((we) => getExercise(we.exerciseId))
+            .filter((ex): ex is NonNullable<typeof ex> => !!ex && isBlockedByInjury(ex, avoidConstraints))
+            .map((ex) => ex.name),
         ),
       ]
     : []
-  const showAvoidNotice = flaggedMuscles.length > 0 && avoidNoticeDismissedId !== current.id
+  const avoidedAreas = avoidedAreaLabels(profile)
+  const showAvoidNotice = flaggedNames.length > 0 && avoidNoticeDismissedId !== current.id
+
+  // Manually adding an exercise that loads an area the user is working around → confirm first, since
+  // they explicitly chose it (the generator already avoids these; this guards the manual escape hatch).
+  const addWithInjuryCheck = async (id: string) => {
+    const ex = getExercise(id)
+    const conflicts = ex ? exerciseConflicts(ex, profile) : []
+    if (
+      conflicts.length > 0 &&
+      !(await confirm({
+        title: 'Add this anyway?',
+        body: `${ex!.name} loads your ${conflicts.join(', ')}, which you’re avoiding. Add it anyway?`,
+        confirmLabel: 'Add anyway',
+        tone: 'danger',
+      }))
+    )
+      return
+    addExercise(id)
+  }
 
   // on a plan session, the Add picker respects the plan's narrowed equipment
   let pickerEquipment: Equipment[] | undefined
@@ -218,16 +239,18 @@ function SessionView() {
         {showAvoidNotice && (
           <div className="rounded-2xl border border-rose-400/40 bg-rose-400/[0.08] px-4 py-3.5 flex items-start gap-3">
             <div className="flex-1 min-w-0 text-[13px] leading-snug">
-              <div className="font-bold text-rose-200">Heads up — areas you’re working around</div>
+              <div className="font-bold text-rose-200">
+                Heads up{avoidedAreas.length ? ` — avoiding ${avoidedAreas.join(', ')}` : ''}
+              </div>
               <p className="text-fg/60 mt-1">
-                This session trains {flaggedMuscles.map(muscleLabel).join(', ')}, which you flagged to work
-                around. Swap or remove those exercises if needed — and update what you’re working around
-                anytime in{' '}
+                This session still includes {flaggedNames.join(', ')} — swap or remove{' '}
+                {flaggedNames.length === 1 ? 'it' : 'them'} if it doesn’t feel right, or manage your injuries
+                in{' '}
                 <button
-                  onClick={() => router.push('/settings/training')}
+                  onClick={() => router.push('/settings/injuries')}
                   className="font-semibold text-rose-200 underline underline-offset-2 active:text-rose-100"
                 >
-                  Settings → Training
+                  Settings → Injuries
                 </button>
                 .
               </p>
@@ -326,7 +349,7 @@ function SessionView() {
       <ExercisePicker
         open={addOpen}
         onClose={() => setAddOpen(false)}
-        onPick={(id) => addExercise(id)}
+        onPick={addWithInjuryCheck}
         exclude={existingIds}
         title="Add Exercise"
         equipment={pickerEquipment}

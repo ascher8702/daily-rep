@@ -1,12 +1,16 @@
 import { describe, it, expect } from 'vitest'
-import type { Equipment, MuscleGroup, Workout } from '../types'
+import type { Avoidance, Equipment, MuscleGroup, Workout } from '../types'
 import { generateWorkout, suggestedFocus, shouldWarmup, lastPerformance, warmupSets } from '../lib/generator'
 import { getExercise } from '../data/exercises'
 import { fullGymProfile, PUSH, NOW, completedWorkout } from './fixtures'
 
+// muscle preferences live in the unified `avoiding` list now (see injuries.test.ts for full coverage)
+const skip = (...muscles: MuscleGroup[]): Avoidance[] =>
+  muscles.map((muscle) => ({ id: `p-${muscle}`, kind: 'preference', muscle, createdAt: NOW, includeInPlans: false }))
+
 describe('generateWorkout — avoid areas (injury/preference)', () => {
   it('never programs an exercise whose PRIMARY muscle is an avoided area', () => {
-    const w = generateWorkout({ ...fullGymProfile, avoidMuscles: ['chest'] }, [], NOW)
+    const w = generateWorkout({ ...fullGymProfile, avoiding: skip('chest') }, [], NOW)
     for (const we of w.exercises) {
       const ex = getExercise(we.exerciseId)!
       expect(ex.primary, `${ex.name} primarily trains an avoided muscle`).not.toContain('chest')
@@ -16,7 +20,7 @@ describe('generateWorkout — avoid areas (injury/preference)', () => {
 
   it('still builds a non-empty session even with several avoided areas', () => {
     const avoid: MuscleGroup[] = ['chest', 'quads', 'back']
-    const w = generateWorkout({ ...fullGymProfile, avoidMuscles: avoid }, [], NOW)
+    const w = generateWorkout({ ...fullGymProfile, avoiding: skip(...avoid) }, [], NOW)
     expect(w.exercises.length).toBeGreaterThan(0)
     for (const we of w.exercises) {
       const ex = getExercise(we.exerciseId)!

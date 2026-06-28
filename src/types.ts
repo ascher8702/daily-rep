@@ -36,7 +36,94 @@ export type Unit = 'lb' | 'kg'
 
 export type Theme = 'system' | 'light' | 'dark'
 
-export type ExerciseCategory = 'compound' | 'isolation' | 'cardio' | 'core'
+export type ExerciseCategory = 'compound' | 'isolation' | 'cardio' | 'core' | 'rehab'
+
+/**
+ * A body region the user can flag as injured/limited. Regions are JOINTS or common strain sites —
+ * not the 14 training muscle groups — because that's how people experience and report an injury
+ * ("my knee", "my lower back"), and because a joint implicates several muscles AND movement patterns
+ * that no single MuscleGroup captures. Each region maps to the muscles + movement patterns to avoid
+ * and a curated set of therapeutic exercises (see lib/injuries + data/rehab).
+ */
+export type BodyRegion =
+  | 'neck'
+  | 'shoulder'
+  | 'elbow'
+  | 'wrist'
+  | 'upperback'
+  | 'lowerback'
+  | 'hip'
+  | 'knee'
+  | 'ankle'
+  | 'hamstring'
+
+/**
+ * How much an injury constrains programming, mapped to the modern sports-med "relative rest" ladder:
+ *  - mild     — a tweak; train around it. Avoid lifts that PRIMARILY load the area and its risky
+ *               movement patterns, but keep training everything else. Rehab is optional.
+ *  - moderate — avoid loading it at all (primary OR secondary), plus risky patterns. Rehab recommended.
+ *  - severe   — resting / actively rehabbing. Same avoidance as moderate, rehab foregrounded, and a
+ *               clear "see a professional" prompt. The app never claims to treat — only to train around.
+ */
+export type InjurySeverity = 'mild' | 'moderate' | 'severe'
+
+/** A user-reported injury or limitation that the generator trains around (and offers rehab for). */
+export interface Injury {
+  id: string
+  region: BodyRegion
+  severity: InjurySeverity
+  /** epoch ms when logged */
+  createdAt: number
+  /** optional free-text context ("left side", "from deadlifts") */
+  note?: string
+  /** epoch ms when the user marked it recovered — kept for history but no longer constrains programming */
+  resolvedAt?: number
+}
+
+/**
+ * What an injury/limitation is anchored to: a JOINT/region (knee, shoulder — comes with rehab + a
+ * provocative-movement-pattern map) or a single MUSCLE group (a strained pec, or just "skip biceps").
+ */
+export type AvoidanceTarget =
+  | { type: 'region'; region: BodyRegion }
+  | { type: 'muscle'; muscle: MuscleGroup }
+
+/**
+ * The unified "working around" model — ONE list that replaces the old split between `injuries[]`
+ * (structured, region-based, with rehab) and `avoidMuscles[]` (a plain muscle preference). Every row is
+ * an `Avoidance`, forked by the user's INTENT when they add it:
+ *  - kind 'injury'     — something that hurts. Carries a severity, surfaces rehab + the pain/red-flag
+ *                        framing, and is trained around per the severity ladder. Targets a region OR a
+ *                        bare muscle (a muscle strain with no joint).
+ *  - kind 'preference' — "I'd just rather not train this muscle." No severity, no rehab, no medical
+ *                        framing; the generator simply skips it as a primary mover.
+ * `includeInPlans` is the per-item replacement for the old global `avoidInPlans` toggle: free workouts
+ * always work around every active row; structured plan days only drop the rows with `includeInPlans`.
+ */
+export interface InjuryAvoidance {
+  id: string
+  kind: 'injury'
+  target: AvoidanceTarget
+  severity: InjurySeverity
+  note?: string
+  createdAt: number
+  resolvedAt?: number
+  /** also drop this on structured plan days (defaults ON for injuries). */
+  includeInPlans?: boolean
+}
+
+export interface PreferenceAvoidance {
+  id: string
+  kind: 'preference'
+  muscle: MuscleGroup
+  note?: string
+  createdAt: number
+  resolvedAt?: number
+  /** also drop this on structured plan days (defaults OFF for a mere preference). */
+  includeInPlans?: boolean
+}
+
+export type Avoidance = InjuryAvoidance | PreferenceAvoidance
 
 export interface Exercise {
   id: string
@@ -52,6 +139,10 @@ export interface Exercise {
   /** is this a unilateral movement (per-side logging hint) */
   unilateral?: boolean
   instructions: string[]
+  /** therapeutic exercises only: recommended dosage, e.g. "3 × 30s hold" or "2–3 × 12 slow reps" */
+  dosage?: string
+  /** therapeutic exercises only: one line on why it helps the injured area */
+  rationale?: string
 }
 
 export interface LoggedSet {
@@ -159,11 +250,18 @@ export interface Profile {
   restSeconds?: number
   /** muscle groups user wants to emphasize */
   focusMuscles: MuscleGroup[]
-  /** muscle areas to avoid (injury/preference) — the generator won't program lifts that primarily hit them */
+  /**
+   * The unified "working around" list — injuries (with rehab) AND plain muscle preferences, in one
+   * model. The generator, plan filter, Home preview and in-session alert all read this via
+   * lib/injuries.injuryConstraints. See [[daily-rep-injuries-feature]].
+   */
+  avoiding: Avoidance[]
+  /** @deprecated legacy — migrated into `avoiding` on hydrate; never written anymore. */
   avoidMuscles?: MuscleGroup[]
-  /** also apply `avoidMuscles` to PLAN-prescribed lifts (drop avoided-primary lifts from plan days).
-   *  Off by default so following a program keeps its structure; the session alert warns either way. */
+  /** @deprecated legacy — the old global "apply to plans" toggle, migrated to per-item `includeInPlans`. */
   avoidInPlans?: boolean
+  /** @deprecated legacy — structured injuries, migrated into `avoiding` (kind:'injury'). */
+  injuries?: Injury[]
   bodyweight?: number
   /** optional self-reported gender — nudges plan recommendations (e.g. glute-focused programs); never gates content */
   gender?: 'male' | 'female'
