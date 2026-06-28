@@ -91,6 +91,18 @@ export function nextClock(prev: number, now: number): number {
   return Math.max(prev + 1, now)
 }
 
+/**
+ * The clock to stamp AFTER adopting a newer cloud blob: strictly past BOTH the old local clock and the
+ * adopted `cloudTs`, via `Math.max(local, cloud) + 1`. The `+1` is load-bearing: at the adopt branch
+ * `local < cloud`, so `nextClock(local, cloud)` returns exactly `cloud`, and a push at
+ * `client_updated_at == cloud` is REVERTED by the server's `<=` monotonic guard
+ * (`daily_rep_guard_monotonic`) — silently losing the merged (unioned) blob. Strictly `> cloud` lets the
+ * next push survive that guard so the union actually reaches the DB. Pure + exported for tests.
+ */
+export function clockAfterAdopt(local: number, cloud: number): number {
+  return Math.max(local, cloud) + 1
+}
+
 /** The partialized state blob exactly as persisted to localStorage. */
 /** Parse the Zustand persist blob's `.state`, guarding it's a real (non-null, non-array) OBJECT before
  *  it's pushed as the cloud `data` — a corrupt blob whose `.state` is a string/array/null/garbage → null
@@ -218,7 +230,12 @@ async function pullAndReconcile(): Promise<void> {
       const merged = mergePersisted(row.data as unknown as Partial<AppState>, useStore.getState())
       useStore.setState(merged)
       lastPushedJson = JSON.stringify(persistedState())
-      writeClock(cloudTs)
+      // Bump strictly past cloudTs (NOT pin at cloudTs). setState above already fired the store
+      // subscription, which set the clock to nextClock(oldLocal, Date.now()) — but if cloudTs was
+      // written by a clock-ahead device that value can be < cloudTs, so the next push would land at
+      // client_updated_at < cloudTs and be reverted by the server's <= guard (the union never reaches
+      // the DB). The explicit max(local, cloud)+1 overrides that and guarantees the next push survives.
+      writeClock(clockAfterAdopt(clientUpdatedAt, cloudTs))
     } else {
       // local is newer or the cloud row is empty → claim/update the cloud copy from local
       await pushNow()

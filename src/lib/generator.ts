@@ -17,7 +17,7 @@ import { injuryConstraints, isBlockedByInjury } from './injuries'
 import { isExerciseDoable } from './equipment'
 import { prescribe, type Prescription } from './progression'
 import { roundToAchievable, startingWeight } from './weights'
-import { uid } from './format'
+import { uid, newWorkoutId } from './format'
 
 // Larger muscles anchor a session, so give them a small selection nudge — balanced
 // across push/pull/legs rather than skewing toward any one region.
@@ -350,7 +350,7 @@ export function generateWorkout(
     .slice(0, 3)
 
   return {
-    id: uid('w'),
+    id: newWorkoutId(),
     date: now,
     status: 'planned',
     title: titleFor(focus),

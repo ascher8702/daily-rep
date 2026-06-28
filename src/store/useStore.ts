@@ -28,7 +28,7 @@ import { dayFocusMuscles, getPlan, planEquipment, type WorkoutPlan, type PlanDay
 import { resolvePlanLifts } from '../lib/substitution'
 import { supersetPartnerBehind } from '../lib/supersets'
 import { buildSampleHistory } from '../lib/seed'
-import { uid, convertWeight } from '../lib/format'
+import { uid, newWorkoutId, convertWeight } from '../lib/format'
 import { emitToast } from '../lib/toast'
 
 const DEFAULT_PROFILE: Profile = {
@@ -58,6 +58,10 @@ const DEFAULT_PROFILE: Profile = {
 export interface AppState {
   profile: Profile
   workouts: Workout[] // completed history
+  /** ids of completed workouts the user deleted — a tombstone so a cross-device union (mergePersisted)
+   *  doesn't resurrect them. Unioned across devices; an id present here is subtracted from the merged
+   *  set. Persisted + synced (see partializeState). */
+  deletedWorkoutIds: string[]
   current: Workout | null // the planned / active session
   restEndsAt: number | null // epoch ms for the running rest timer
   restDuration: number // seconds the current rest was set to
@@ -678,6 +682,70 @@ function withDayEdit(
   return out
 }
 
+/** The newer of two completed workouts: LWW by `completedAt`, then `date`, then — on a tie — `x` (the
+ *  a-side). Completed workouts are immutable, so a same-id clash only arises from a legacy `uid('w')`
+ *  collision; either side is "correct data", so a deterministic, side-stable rule is sufficient. */
+function newerWorkout(x: Workout, y: Workout): Workout {
+  const kx = x.completedAt ?? x.date ?? 0
+  const ky = y.completedAt ?? y.date ?? 0
+  return ky > kx ? y : x // strictly-greater y wins; tie keeps x (the a-side)
+}
+
+/**
+ * Union two completed-workout lists by id, minus a tombstone set. Keeps every id present on EITHER side
+ * (the data-loss fix); on a true id collision, keep the deterministically-newer one (see newerWorkout).
+ * Tombstoned ids are removed from the result so a delete on one device isn't undone by the other still
+ * holding the row. Order: `a`-first in `a`'s order, then `b`-only ids in `b`'s order. Pure.
+ */
+export function unionWorkouts(a: Workout[], b: Workout[], tombstoned: Iterable<string> = []): Workout[] {
+  const drop = new Set(tombstoned)
+  const byId = new Map<string, Workout>()
+  const order: string[] = [] // explicit a-first key order (independent of Map insertion semantics)
+  for (const w of a) {
+    if (!byId.has(w.id)) order.push(w.id)
+    byId.set(w.id, w)
+  }
+  for (const w of b) {
+    const existing = byId.get(w.id)
+    if (existing) byId.set(w.id, newerWorkout(existing, w))
+    else {
+      order.push(w.id)
+      byId.set(w.id, w)
+    }
+  }
+  return order.filter((id) => !drop.has(id)).map((id) => byId.get(id)!)
+}
+
+/** Union two string-id tombstone sets, de-duped, order-stable (a-first). Pure. */
+export function unionIds(a: string[] | undefined, b: string[] | undefined): string[] {
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const id of [...(a ?? []), ...(b ?? [])]) {
+    if (!seen.has(id)) {
+      seen.add(id)
+      out.push(id)
+    }
+  }
+  return out
+}
+
+/** Coerce a persisted/cloud `deletedWorkoutIds` blob to a clean string[] (a corrupt non-array or mixed
+ *  array can't poison the tombstone — back-compat: a missing key reads as []). Pure. */
+function asStringArray(x: unknown): string[] {
+  return Array.isArray(x) ? x.filter((v): v is string => typeof v === 'string') : []
+}
+
+/** Sanitize a persisted workout list the same way line 734 always has (repair each record, drop the
+ *  unsalvageable, coerce a missing focus) so the union only ever holds valid Workouts. */
+function sanitizeWorkouts(x: unknown): Workout[] {
+  return Array.isArray(x)
+    ? x
+        .map((w) => sanitizeWorkout(w))
+        .filter((w): w is Workout => w !== null)
+        .map((w) => (Array.isArray(w.focus) ? w : { ...w, focus: [] }))
+    : []
+}
+
 /**
  * Defensively merge persisted state over defaults so a corrupt/older/partial blob can't
  * hydrate with the wrong shapes and crash the app. Exported for regression testing.
@@ -726,17 +794,24 @@ export function mergePersisted(persisted: unknown, current: AppState): AppState 
   // drop a followed plan that no longer resolves (deleted custom plan / stale blob) so the user
   // isn't stranded following a phantom plan with no Home-side recovery
   const activePlan = rawActivePlan && resolvePlan(rawActivePlan.planId, customPlans) ? rawActivePlan : null
+  // Tombstone union: the SAME set both subtracts from the merged workouts (so a delete stays deleted)
+  // AND is stored on the merged state (so it's remembered for the next merge). Both sides' tombstones
+  // converge across devices; a missing/garbage blob value reads as [].
+  const deletedWorkoutIds = unionIds(asStringArray(p.deletedWorkoutIds), current.deletedWorkoutIds)
   return {
     ...current,
     ...p,
-    // repair each record (default legacy targetReps, drop only the unsalvageable exercises rather
-    // than the whole workout), drop a workout with nothing readable left, and coerce a missing focus
-    workouts: Array.isArray(p.workouts)
-      ? p.workouts
-          .map((w) => sanitizeWorkout(w))
-          .filter((w): w is Workout => w !== null)
-          .map((w) => (Array.isArray(w.focus) ? w : { ...w, focus: [] }))
-      : current.workouts,
+    // Union completed workouts by id (the data-loss fix) instead of wholesale-taking the persisted side.
+    // The persisted/cloud side is passed as `a` so HYDRATION (current.workouts === []) is byte-identical
+    // to the old wholesale take; ADOPT appends local-only extras and LWW-resolves true id collisions.
+    // Each side is sanitized first (repair targetReps, drop the unsalvageable, coerce focus — as line 734
+    // always did), and tombstoned ids are subtracted so a delete isn't resurrected by a stale copy.
+    workouts: unionWorkouts(
+      sanitizeWorkouts(p.workouts),
+      sanitizeWorkouts(current.workouts),
+      deletedWorkoutIds,
+    ),
+    deletedWorkoutIds,
     // repair the session (keep it as long as ≥1 exercise survives) rather than nulling the whole
     // thing on a single malformed block, but still require the top-level shape the screens read
     // (.focus / .title / .status) so a corrupt current can't crash them.
@@ -798,6 +873,8 @@ export function partializeState(s: AppState) {
   return {
     profile: s.profile,
     workouts: s.workouts,
+    // the delete tombstone — synced so a delete on one device converges across all of them
+    deletedWorkoutIds: s.deletedWorkoutIds,
     current: s.current,
     activePlan: s.activePlan,
     customPlans: s.customPlans,
@@ -815,6 +892,7 @@ export const useStore = create<AppState>()(
     (set, get) => ({
       profile: DEFAULT_PROFILE,
       workouts: [],
+      deletedWorkoutIds: [],
       current: null,
       avoidNoticeDismissedId: null,
       restEndsAt: null,
@@ -1003,7 +1081,7 @@ export const useStore = create<AppState>()(
         // links dropped so a repeat is standalone and never advances plan rotation
         const clone: Workout = {
           ...src,
-          id: uid('w'),
+          id: newWorkoutId(),
           date: Date.now(),
           status: 'planned',
           startedAt: undefined,
@@ -1166,7 +1244,7 @@ export const useStore = create<AppState>()(
         let w: Workout
         if (hybrid.length > 0 && !collapsed) {
           w = {
-            id: uid('w'),
+            id: newWorkoutId(),
             date: Date.now(),
             status: 'planned',
             title: day.title,
@@ -1191,7 +1269,7 @@ export const useStore = create<AppState>()(
         } else if (hybrid.length > 0) {
           // thin, but no focus to fall back on — use the equippable lifts we have rather than nothing
           w = {
-            id: uid('w'),
+            id: newWorkoutId(),
             date: Date.now(),
             status: 'planned',
             title: day.title,
@@ -1685,12 +1763,22 @@ export const useStore = create<AppState>()(
           // snapshot the deleted workout so the toast can restore it at its original position
           undo = () =>
             set((s2) => {
-              if (s2.workouts.some((w) => w.id === id)) return {}
+              // Always strip the tombstone (even if the workout already re-appeared, e.g. re-synced) —
+              // otherwise the next mergePersisted would re-subtract the restored row. Only the RE-INSERT
+              // is gated on the workout being absent, so Undo never produces a duplicate.
+              const deletedWorkoutIds = s2.deletedWorkoutIds.filter((x) => x !== id)
+              if (s2.workouts.some((w) => w.id === id)) return { deletedWorkoutIds }
               const next = [...s2.workouts]
               next.splice(Math.min(index, next.length), 0, removed)
-              return { workouts: next }
+              return { workouts: next, deletedWorkoutIds }
             })
-          return { workouts: s.workouts.filter((w) => w.id !== id) }
+          // record the id in the tombstone (de-duped) so a cross-device union doesn't resurrect it
+          return {
+            workouts: s.workouts.filter((w) => w.id !== id),
+            deletedWorkoutIds: s.deletedWorkoutIds.includes(id)
+              ? s.deletedWorkoutIds
+              : [...s.deletedWorkoutIds, id],
+          }
         })
         if (undo) emitToast('Workout deleted', { label: 'Undo', onAction: undo })
       },
@@ -1698,8 +1786,8 @@ export const useStore = create<AppState>()(
       loadSampleData: () => {
         const { profile } = get()
         const sample = buildSampleHistory(profile, Date.now())
-        // sample data is a clean demo slate — clear any in-progress session and plan
-        set({ workouts: sample, current: null, restEndsAt: null, restDuration: 0, activePlan: null, planProgress: {}, planOverrides: {}, planDayEdits: {} })
+        // sample data is a clean demo slate — clear any in-progress session, plan, and delete tombstones
+        set({ workouts: sample, deletedWorkoutIds: [], current: null, restEndsAt: null, restDuration: 0, activePlan: null, planProgress: {}, planOverrides: {}, planDayEdits: {} })
         emitToast(`Loaded ${sample.length} sample workouts`)
       },
 
@@ -1707,6 +1795,7 @@ export const useStore = create<AppState>()(
         set({
           profile: DEFAULT_PROFILE,
           workouts: [],
+          deletedWorkoutIds: [],
           current: null,
           restEndsAt: null,
           restDuration: 0,

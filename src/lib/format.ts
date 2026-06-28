@@ -4,6 +4,18 @@ export function uid(prefix = ''): string {
   return prefix + Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4)
 }
 
+/**
+ * Mint a globally-unique COMPLETED-workout id. Workout ids are the `analytics_sessions` PK and are now
+ * unioned across devices on sync, so a collision would silently drop a session — use an RFC-4122 v4 UUID
+ * (122 random bits). Falls back to the legacy `uid('w')` only where `crypto.randomUUID` is unavailable
+ * (non-secure-context browser, SSR, exotic runtime). Old ids stay valid; this only governs NEW ids.
+ */
+export function newWorkoutId(): string {
+  const c = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto
+  if (c && typeof c.randomUUID === 'function') return c.randomUUID()
+  return uid('w')
+}
+
 const LEG_MUSCLES = ['quads', 'hamstrings', 'glutes', 'calves']
 
 /** "per leg" / "per arm" for a unilateral lift (reps are per side), else null. */

@@ -153,6 +153,9 @@ export interface LoggedSet {
   done: boolean
   /** warmup sets don't count toward working volume */
   warmup?: boolean
+  /** optional per-set effort on the RPE scale (6–10); read by the analytics projection
+   *  (analytics_session_sets.rpe) alongside the per-exercise rpe. Absent until rated. */
+  rpe?: number
 }
 
 /** direction of a progression cue vs last session */

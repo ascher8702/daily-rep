@@ -35,6 +35,7 @@ describe('partializeState (persisted/synced snapshot shape)', () => {
     'avoidNoticeDismissedId',
     'current',
     'customPlans',
+    'deletedWorkoutIds',
     'planDayEdits',
     'planOverrides',
     'planProgress',
