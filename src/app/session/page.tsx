@@ -31,9 +31,15 @@ export default function SessionPage() {
   const router = useRouter()
   const current = useStore((s) => s.current)
   const generate = useStore((s) => s.generate)
+  // Finishing clears `current` synchronously, but the route change to the summary/home is async —
+  // without this guard the empty state below would flash for a frame before navigation lands.
+  const [finishing, setFinishing] = useState(false)
 
   // ---- empty state: no planned/active session ----
   if (!current) {
+    // mid-finish: session already cleared, navigation in flight — render nothing rather than
+    // flashing the "Generate a workout" screen on the way to the summary.
+    if (finishing) return null
     return (
       <div className="min-h-screen flex flex-col items-center justify-center px-8 text-center animate-fade-in safe-top safe-bottom">
         <div className="grid place-items-center h-16 w-16 rounded-2xl bg-blaze/[0.12] text-blaze-warm mb-5">
@@ -53,10 +59,10 @@ export default function SessionPage() {
     )
   }
 
-  return <SessionView />
+  return <SessionView onFinishing={() => setFinishing(true)} />
 }
 
-function SessionView() {
+function SessionView({ onFinishing }: { onFinishing: () => void }) {
   const router = useRouter()
   const confirm = useConfirm()
   const current = useStore((s) => s.current)
@@ -185,6 +191,9 @@ function SessionView() {
     }
     // capture the id before finishing (finishWorkout keeps it on the saved workout, then clears current)
     const savedId = current.id
+    // flag the finish before clearing `current`, so the page suppresses its empty state during the
+    // async route change instead of flashing the "Generate a workout" screen
+    onFinishing()
     finishWorkout()
     // anyDone → a real workout was saved: show its summary; otherwise it was discarded → home
     router.push(anyDone ? `/session/summary?w=${savedId}` : '/')
