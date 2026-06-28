@@ -1,4 +1,5 @@
-import type { Equipment, Experience, Goal, MuscleGroup } from '../types'
+import type { BodyRegion, Equipment, Experience, Goal, MuscleGroup } from '../types'
+import { MUSCLES } from './muscles'
 
 /** Finer equipment context than the display label, used to map the generation pool. */
 export type EquipmentContext = 'full-gym' | 'home-dumbbell' | 'bodyweight' | 'minimal'
@@ -25,8 +26,12 @@ export interface PlanDay {
   label: string
   /** the workout title used when this day is generated */
   title: string
-  /** muscles the generator should target for this day */
-  focus: MuscleGroup[]
+  /**
+   * Muscles the generator should target for this day. Normally `MuscleGroup`s; a rehab/therapeutic day
+   * (driven by its explicit `lifts`) may target a `BodyRegion` instead (e.g. 'neck'), so the type
+   * admits both. A region focus simply doesn't match a muscle pool — such days are lift-driven.
+   */
+  focus: (MuscleGroup | BodyRegion)[]
   /** override the session's set/rep scheme for this day (e.g. a strength vs hypertrophy day) */
   goal?: Goal
   /**
@@ -63,6 +68,16 @@ export interface WorkoutPlan {
   /** plan is especially popular with / oriented toward this group — nudges recommendations, never excludes */
   genderAffinity?: 'male' | 'female'
   schedule: PlanDay[]
+}
+
+/**
+ * Narrow a day's `focus` to just the real `MuscleGroup`s, dropping any `BodyRegion` member (a
+ * rehab/therapeutic day may target a region like 'neck'). Used wherever a day's focus flows into a
+ * `MuscleGroup[]` slot (Workout.focus / genFocus / the generator's focusOverride). A no-op for every
+ * bundled plan (all use muscle-group focuses); region-focused rehab days are lift-driven anyway.
+ */
+export function dayFocusMuscles(focus: PlanDay['focus']): MuscleGroup[] {
+  return focus.filter((m): m is MuscleGroup => m in MUSCLES)
 }
 
 /** All weekly frequencies a plan supports (for the availability filter). */

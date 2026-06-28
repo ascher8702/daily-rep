@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react'
 import type { MuscleGroup } from '@/types'
 import { useStore, resolvePlan } from '@/store/useStore'
+import { dayFocusMuscles } from '@/data/plans'
 import { localWeek } from '@/lib/stats'
 import { recoveryToken } from '@/lib/recovery'
 import { ALL_MUSCLES, MUSCLES, muscleLabel } from '@/data/muscles'
@@ -174,7 +175,7 @@ export default function SwitchWorkoutSheet({
                           )}
                         </div>
                         <div className="text-xs text-fg/45 truncate mt-0.5">
-                          {day.focus.slice(0, 3).map(muscleLabel).join(' · ') || day.label}
+                          {dayFocusMuscles(day.focus).slice(0, 3).map(muscleLabel).join(' · ') || day.label}
                         </div>
                       </div>
                       {done ? (

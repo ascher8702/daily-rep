@@ -24,7 +24,7 @@ import { prescribe } from '../lib/progression'
 import { startingWeight, isBodyweightExercise } from '../lib/weights'
 import { defaultBodyweight, detectSetPR } from '../lib/stats'
 import { getExercise } from '../data/exercises'
-import { getPlan, planEquipment, type WorkoutPlan, type PlanDay } from '../data/plans'
+import { dayFocusMuscles, getPlan, planEquipment, type WorkoutPlan, type PlanDay } from '../data/plans'
 import { resolvePlanLifts } from '../lib/substitution'
 import { supersetPartnerBehind } from '../lib/supersets'
 import { buildSampleHistory } from '../lib/seed'
@@ -1171,14 +1171,14 @@ export const useStore = create<AppState>()(
             status: 'planned',
             title: day.title,
             exercises: hybrid,
-            focus: day.focus.slice(0, 3),
+            focus: dayFocusMuscles(day.focus).slice(0, 3),
             durationMin: Math.max(11, hybrid.length * 11),
-            genFocus: day.focus,
+            genFocus: dayFocusMuscles(day.focus),
           }
         } else if (day.focus.length > 0) {
           // focus-based fallback (no explicit lifts, none equippable, or a heavy collapse)
           w = generateWorkout(profile, workouts, Date.now(), {
-            focusOverride: day.focus,
+            focusOverride: dayFocusMuscles(day.focus),
             equipmentOverride: planEquipment(plan),
             goalOverride: day.goal,
             shuffle,
@@ -1186,8 +1186,8 @@ export const useStore = create<AppState>()(
             surface: 'plan',
           })
           w.title = day.title
-          w.focus = day.focus.slice(0, 3)
-          w.genFocus = day.focus
+          w.focus = dayFocusMuscles(day.focus).slice(0, 3)
+          w.genFocus = dayFocusMuscles(day.focus)
         } else if (hybrid.length > 0) {
           // thin, but no focus to fall back on — use the equippable lifts we have rather than nothing
           w = {
@@ -1196,9 +1196,9 @@ export const useStore = create<AppState>()(
             status: 'planned',
             title: day.title,
             exercises: hybrid,
-            focus: day.focus.slice(0, 3),
+            focus: dayFocusMuscles(day.focus).slice(0, 3),
             durationMin: Math.max(11, hybrid.length * 11),
-            genFocus: day.focus,
+            genFocus: dayFocusMuscles(day.focus),
           }
         } else {
           // a day with neither equippable lifts nor a focus can't be generated — skip without trapping

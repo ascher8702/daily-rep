@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest'
-import { PLANS, getPlan, planFrequencies, planScheduleSummary, mergeCatalogue, setRuntimePlans } from '../data/plans'
+import { PLANS, getPlan, planFrequencies, planScheduleSummary, mergeCatalogue, setRuntimePlans, dayFocusMuscles } from '../data/plans'
 import { generateWorkout } from '../lib/generator'
 import { getExercise } from '../data/exercises'
 import { fullGymProfile, NOW } from './fixtures'
@@ -47,7 +47,7 @@ describe('workout plans', () => {
   it('each plan day generates a session focused on that day', () => {
     const ppl = getPlan('ppl-6')!
     for (const day of ppl.schedule) {
-      const w = generateWorkout(fullGymProfile, [], NOW, { focusOverride: day.focus })
+      const w = generateWorkout(fullGymProfile, [], NOW, { focusOverride: dayFocusMuscles(day.focus) })
       expect(w.exercises.length).toBeGreaterThan(0)
       for (const we of w.exercises) {
         const ex = getExercise(we.exerciseId)!

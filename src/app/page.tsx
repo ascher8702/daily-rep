@@ -11,7 +11,7 @@ import { resolvePlanLifts } from '@/lib/substitution'
 import { computeWeeklyStreak, localWeek } from '@/lib/stats'
 import { fmtDate, fmtDuration, fmtWeight } from '@/lib/format'
 import { ALL_MUSCLES, MUSCLES } from '@/data/muscles'
-import { planEquipment } from '@/data/plans'
+import { dayFocusMuscles, planEquipment } from '@/data/plans'
 import { getExercise } from '@/data/exercises'
 import { Button } from '@/components/ui/Button'
 import { BlazeHeroCard, type HeroChip, type HeroExercise } from '@/components/ui/BlazeHeroCard'
@@ -146,7 +146,7 @@ export default function HomeScreen() {
     // 2) explicit lifts don't equip / collapsed → preview the focus-based fallback Start will build
     if (planDay.focus.length === 0) return { items: [], adapted: false }
     const fallback = generateWorkout(profile, workouts, genNow, {
-      focusOverride: planDay.focus,
+      focusOverride: dayFocusMuscles(planDay.focus),
       equipmentOverride: planEquipment(plan),
       goalOverride: planDay.goal,
       // mirror generateFromPlan's fallback so the preview matches the build
