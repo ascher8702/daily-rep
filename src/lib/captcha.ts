@@ -5,7 +5,7 @@
  * behaves exactly as before — no widget, no submit gating. The token the widget produces is passed to
  * supabase.auth via `options.captchaToken`; the matching SECRET key must be configured in the Supabase
  * dashboard (Auth → Attack Protection → enable CAPTCHA = Turnstile) for the server to verify it.
- * Both the dashboard enable and the secret are `[HUMAN]` steps — see docs/loop-progress.md.
+ * Both the dashboard enable and the secret are `[HUMAN]` steps — see docs/runbook-deploy.md.
  *
  * NEXT_PUBLIC_* vars are inlined at build, so `captchaEnabled` is a build-time constant.
  */

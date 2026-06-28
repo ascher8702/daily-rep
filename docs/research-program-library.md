@@ -1,4 +1,4 @@
-# FitForge Program Library — Research & Verified Catalogue
+# Daily Rep Program Library — Research & Verified Catalogue
 
 > Generated from two adversarially-verified deep-research passes (run IDs w3hjuyer4 science backbone + wc5k129wr program catalogue). Every program structure below was documented from an authoritative source and independently fact-checked. Tags map directly to the app filters: **level**, **daysPerWeek**, **equipmentContext**, **goal**.
 

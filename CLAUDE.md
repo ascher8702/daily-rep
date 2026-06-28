@@ -55,8 +55,8 @@ critically broken before — treat changes here with extra care and tests.
 - `src/lib/generator.ts` — scores muscles by freshness (+ user focus), picks targets, greedily selects
   exercises that fit equipment/experience/time, prescribes sets/reps/rest by goal.
 - `src/lib/progression.ts` — evidence-based double-progression: experience/body/type-scaled load
-  increments, plate snapping, stall→deload. Spec: `docs/research-progressive-overload.md` +
-  `docs/progression-audit-2026-06-23.md`.
+  increments, plate snapping, stall→deload. Living spec: `docs/research-progressive-overload.md`
+  (historical audit: `docs/archived/progression-audit-2026-06-23.md`).
 
 ### Domain model & store
 `src/types.ts` is the domain model. `src/store/useStore.ts` is the main store (profile, history
@@ -105,6 +105,8 @@ secret), the rest require a JWT. All Stripe secrets live in Edge Function secret
 
 ## Conventions & guardrails
 
+- **Coding standards** — follow [docs/coding-standards.md](docs/coding-standards.md) (think before
+  coding, simplicity first, surgical changes, goal-driven execution).
 - **UX bar is high and convention-grounded** — match Strong/Hevy/Fitbod patterns; set edits cascade to
   following sets. There's a current design system ("Blaze") — build screens to match the mockups rather
   than inventing or retaining elements not in the design.

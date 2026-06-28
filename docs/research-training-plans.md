@@ -1,6 +1,6 @@
 # Research: Training plans by experience level
 
-Sourced findings behind FitForge's leveled plans (`src/data/plans.ts`). Conducted via multi-source web research with an adversarial verification pass.
+Sourced findings behind Daily Rep's leveled plans (`src/data/plans.ts`). Conducted via multi-source web research with an adversarial verification pass.
 
 **Governing principle:** total weekly volume taken close enough to failure is the primary driver of hypertrophy; frequency, split, and periodization mostly *distribute* that volume. Training age changes how much volume you need, how heavy you must lift, and how fast you can add load.
 
@@ -15,7 +15,7 @@ Sourced findings behind FitForge's leveled plans (`src/data/plans.ts`). Conducte
 | Progression | Linear, per session | Weekly load + double progression | Block volume ramp + DUP |
 | Deload | On stall only | Every 6–8 wk | Every 4–6 wk |
 
-Implemented plans: **Beginner Foundations** (full-body 3×, strength/linear), **Upper/Lower** (4-day, strength + hypertrophy days), **Push/Pull/Legs** (6-day, daily-undulating strength + volume days). Per-day intensity is a `goal` field on each `PlanDay` that overrides the session's set/rep scheme.
+Implemented plans: the catalogue ships ~37 real named programs — e.g. **StrongLifts 5x5**, **Starting Strength**, **Greyskull LP**, **GZCLP**, **Madcow 5x5**, **Texas Method**, **nSuns 531 LP**, **5/3/1 Boring But Big**, **5/3/1 for Powerlifting**, **Upper/Lower 4-Day Split**, **PHUL**, **PHAT**, **Metallicadpa 6-Day PPL**, **Classic 5-Day Bro Split**, and more — each tagged by `level` and `goalFit` with an honest `evidenceTier`. A program's `schedule` is a list of `PlanDay`s; each day carries explicit prescribed `PlanLift`s (sets/rep range, optional `group` for supersets, per-lift `note`) and an optional per-day `goal` field that overrides the session's set/rep scheme.
 
 ## Key evidence (verified against primary sources)
 

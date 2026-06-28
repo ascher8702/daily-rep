@@ -4,9 +4,9 @@
 > on-call operator. Object names below were introspected from the live project on 2026-06-24 and
 > should be re-verified after any schema migration.
 >
-> **Project:** `aswwhsxubqyzbrfoptoq` (⚠️ currently SHARED with an unrelated app — see
-> [runbook-dedicated-project.md](runbook-dedicated-project.md) / the production checklist; a
-> dedicated project is a launch blocker because a restore here affects both apps).
+> **Project:** `clobxwwcjlmyckvkongk` (Daily Rep's own dedicated Supabase project; ref pinned in
+> `supabase/config.toml`). The 2026-06 cutover off the old shared project is done, so a restore here
+> affects only Daily Rep — no co-tenant blast radius.
 
 ---
 
@@ -57,7 +57,7 @@ from user backups: `public.plans` (32 seeded program templates), `public.exercis
 
 Cannot be done from app code / MCP — requires the Supabase dashboard:
 
-1. Dashboard → Project `aswwhsxubqyzbrfoptoq` → **Database → Backups → Point in Time**.
+1. Dashboard → Project `clobxwwcjlmyckvkongk` → **Database → Backups → Point in Time**.
 2. Ensure the project is on a plan that includes PITR; enable it and choose a retention window
    (recommend ≥ 7 days).
 3. **Verify** after ~1 day: the Backups page shows a continuous PITR window with a recent
@@ -132,9 +132,8 @@ For broad corruption / accidental mass delete / bad migration:
 
 1. Dashboard → Database → Backups → **Point in Time** → pick the timestamp just **before** the
    incident. Supabase provisions a restored database (often a new project/branch).
-2. Decide scope:
-   - **Whole-project rollback** acceptable → restore in place (⚠️ shared project: this also rolls
-     back the co-tenant app — coordinate; this is exactly why the dedicated-project blocker exists).
+2. Decide scope (project `clobxwwcjlmyckvkongk` is Daily Rep's own — a restore touches only this app):
+   - **Whole-project rollback** acceptable → restore in place.
    - **Surgical** → restore to a **separate** target, then copy only the needed `daily_rep_state`
      rows back into prod (per §5.1 Option A, bumping `client_updated_at`).
 3. Post-restore verification (§6), then **rebuild the projection** (§5.3).
@@ -220,6 +219,48 @@ within ~2 min (the drain cadence).
 - **Erasure (GDPR):** `public.purge_user_data(uuid)` + Edge Function `delete-account` (irreversible).
 - **Self-service export (GDPR portability):** Settings → "Download my data" (`src/lib/dataExport.ts`).
 
-> ⚠️ This runbook references object names that live only in the remote DB (no `supabase/migrations/`
-> in the repo yet — schema-as-code is a separate `[HUMAN]`/CLI item). Re-introspect (the queries in
-> §6/§4) after any migration and update this file.
+> ⚠️ The object names above are now defined as schema-as-code under `supabase/migrations/`
+> (`20260627000000_baseline_schema.sql` + the migrations `README.md`) — that directory is the source
+> of truth for the schema, not this runbook. Re-introspect (the queries in §6/§4) after any migration
+> and update this file to match.
+
+---
+
+## Appendix — data-preserving migration to a new Supabase project
+
+`scripts/provision-dedicated-project.sh` stands up a **fresh** project from `supabase/migrations/` +
+edge functions — it carries **no data**. That's the right tool for a clean stand-up, but when
+**existing users must be preserved** (passwords, blobs, history), use the data-preserving recipe
+below. The 2026-06 cutover to the dedicated project `clobxwwcjlmyckvkongk` used it; keep it for
+reference for any future project move.
+
+`[HUMAN]`: provisioning, direct-DB `pg_dump`/`psql`, and dashboard toggles can't be done by the
+app/loop. Use the **direct** connection strings (not the pooler) for both source and target. Run in
+this order — it is FK- and derived-data-aware:
+
+1. **Apply the schema first** to the target from `supabase/migrations/` (`supabase db push`), so all
+   tables/triggers/RLS exist before any rows land.
+2. **Move `auth` users FIRST** (the `daily_rep_state` FK → `auth.users` is `ON DELETE CASCADE`, so the
+   users must exist before the blobs). Dump only the user-facing auth tables so users keep their
+   **password hashes** (no forced reset):
+   ```bash
+   pg_dump "$SOURCE_DB_URL" --data-only \
+     --table=auth.users --table=auth.identities > auth_data.sql
+   psql "$TARGET_DB_URL" -f auth_data.sql
+   ```
+3. **Copy the source-of-truth blobs** in FK order (after `auth.users` exists). The monotonic-clock
+   guard is a no-op on a fresh INSERT (no prior row to compare), so the dump restores cleanly:
+   ```bash
+   pg_dump "$SOURCE_DB_URL" --data-only --table=public.daily_rep_state > blobs.sql
+   psql "$TARGET_DB_URL" -f blobs.sql   # count must match source
+   ```
+4. **REBUILD — do not copy — the analytics projection** from the blobs (it's pure derived data):
+   ```sql
+   select analytics.backfill_projection();
+   select analytics.refresh_cohorts_hourly();
+   select analytics.refresh_cohorts_nightly();
+   ```
+5. **Cutover via a read-only window:** briefly make the old project read-only to avoid split-brain
+   writes (offline-first clients keep working locally), point the app env at the new project, and
+   redeploy. Keep the old project intact (read-only) for a **~1–2 week rollback window** before
+   decommissioning.

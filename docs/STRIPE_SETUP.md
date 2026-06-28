@@ -69,7 +69,8 @@ trigger (`security definer`) are the only writers.
 | Webhook signing secret | `whsec_REDACTED_SET_IN_SUPABASE_SECRETS` (must match `STRIPE_WEBHOOK_SECRET` on the project) |
 
 DB migration `subscriptions_table_and_trial` and Edge Functions `create-checkout-session`,
-`create-portal-session`, `set-auto-renew`, `stripe-webhook`, and the updated `delete-account` are deployed.
+`create-portal-session`, `set-auto-renew`, `stripe-webhook`, `reconcile-subscriptions`, and the updated
+`delete-account` are deployed.
 
 Price, portal, webhook, and app URL values are all required Edge Function secrets. The functions do not
 carry test-mode defaults.
@@ -123,8 +124,10 @@ those. `APP_URL` is required and is the only trusted checkout/portal return base
 1. Set the two secrets above.
 2. Sign in, open **Settings → Membership** (or wait out / fake the trial) and click **Subscribe**.
 3. On Stripe Checkout use test card `4242 4242 4242 4242`, any future expiry / CVC / ZIP.
-4. You're redirected back to `/settings?checkout=success`; the webhook updates your row and the UI flips
-   to "Daily Rep Pro" within a couple of seconds (the page polls the entitlement a few times).
+4. You're redirected back to `/checkout/return?status=success`; that page shows a "Confirming your
+   subscription" state and polls the entitlement a few times while the webhook updates your row, then flips
+   to a "You're Pro" welcome — from which **Start training** routes to `/` and the manage link routes to
+   `/settings/membership`.
 5. **Manage subscription** opens the Stripe Billing Portal (cancel, switch plan, update card).
 6. To exercise the paywall without waiting 30 days, set `trial_ends_at` to the past for your user in
    `public.subscriptions`, then reload.
@@ -149,7 +152,7 @@ Other useful test cards: `4000 0025 0000 3155` (requires authentication), `4000 
      STRIPE_PRICE_ANNUAL=price_live_annual \
      STRIPE_PORTAL_CONFIG=bpc_live_xxx \
      APP_URL=https://daily-rep.app \
-     --project-ref aswwhsxubqyzbrfoptoq
+     --project-ref clobxwwcjlmyckvkongk
    ```
 4. Redeploy is **not** required — the functions read these from env at runtime.
 
@@ -165,18 +168,21 @@ falling back to the stored `stripe_customer_id → user_id` mapping.
 
 ## Known limitations / follow-ups
 
-- **Soft gate (hardened, not bulletproof):** the paywall is enforced client-side (this is a
+- **Soft gate, backed by server-side enforcement:** the paywall is enforced client-side (this is a
   client-rendered, offline-capable app). The entitlement store caches the last-known-good result
   per user and falls back to it on a read error (so a lapsed user can't bypass the gate by blocking
   one request), but a determined account holder can still defeat any purely-client check. The valuable
-  data stays behind Supabase RLS. The recommended next step before scaling revenue is **server-side
-  entitlement enforcement** on premium data (e.g. an `is_active_subscriber()` predicate in the RLS on
-  `daily_rep_state`/analytics, or gating the sync/analytics RPCs on subscription status).
+  data stays behind Supabase RLS. **Server-side entitlement enforcement has shipped:** an
+  `is_active_subscriber()` predicate now gates the `daily_rep_state` write RLS (migration
+  `20260626140000_entitlement_rls_on_daily_rep_state.sql`), so a lapsed user can read but cannot write
+  premium data even with a tampered client.
 - `trial_will_end` reminder emails are not wired up (no card is on file during the app trial, so
   Stripe's built-in dunning doesn't apply until the user subscribes).
 - A cross-row unique conflict in the webhook upsert (same Stripe customer/subscription id landing on a
   different `user_id` — only reachable via out-of-band re-association) is logged and acknowledged for
-  **manual reconciliation** rather than auto-resolved.
+  **manual reconciliation** rather than auto-resolved. A pg_cron-scheduled `reconcile-subscriptions`
+  function (every 6h via pg_net; see `20260626160000_schedule_subscription_reconciliation.sql`) now
+  backstops missed/dropped webhooks by re-syncing subscription state from Stripe.
 
 ## Post-review hardening (already applied)
 

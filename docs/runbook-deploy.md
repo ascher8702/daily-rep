@@ -6,9 +6,9 @@ How an operator ships Daily Rep to production. The app has two deployable surfac
 2. **The Supabase backend** → SQL migrations (`supabase/migrations/`) + Edge Functions
    (`supabase/functions/`) on the project.
 
-> Today both surfaces share a Supabase project with an unrelated app (see
-> `docs/runbook-dedicated-project.md`). Moving to a dedicated project is a prerequisite for a clean
-> production launch; this runbook assumes the **target** project, dedicated or not.
+> The dedicated Supabase project (`clobxwwcjlmyckvkongk`) is now provisioned and the data cutover is
+> done; the schema is version-controlled under `supabase/migrations/`. This runbook targets that
+> project. (Historical migration plan: `docs/archived/runbook-dedicated-project.md`.)
 
 ---
 

@@ -1,6 +1,6 @@
 # Research: Fitbod UX patterns & pain points
 
-Sourced research informing FitForge's UX refinement. Summarized in our own words with citations; no copyrighted text reproduced.
+Sourced research informing Daily Rep's UX refinement. Summarized in our own words with citations; no copyrighted text reproduced.
 
 ## How Fitbod works (patterns to emulate)
 - **Home = the workout.** Opens straight into the current day's exercise list — no start gate. A rotating **Focus Exercise** (a major compound) is pinned at top; the rest of the list adapts around it. ([Focus Exercises](https://help.fitbod.me/hc/en-us/articles/35301260960663-Focus-Exercises))
@@ -15,15 +15,15 @@ Sourced research informing FitForge's UX refinement. Summarized in our own words
 3. Adding sets/exercises mid-session is unreliable and can reset completed work. ([fitnessdrum](https://fitnessdrum.com/fitbod-review/))
 4. No user-built supersets. 5. Excessive exercise variation breaks per-lift progression tracking. 6. No automatic deload. 7. kg↔lb rounding bugs (toggle-twice workaround). 8. Shallow form coaching. 9. Long (~10–15 session) personalization ramp. ([indiehackers](https://www.indiehackers.com/post/fitbod-app-review-2026-honest-take-after-real-testing-45d5f07a1b))
 
-## Prioritized improvements (→ FitForge status)
-1. Non-blocking, forward-looking rest timer with "Up next" preview + ±15s/skip. → **bar exists; add Up-next.**
-2. Constrain weights to loadable values + show plate breakdown inline. → **`lib/weights.ts` done; add plate display.**
+## Prioritized improvements (→ Daily Rep status)
+1. Non-blocking, forward-looking rest timer with "Up next" preview + ±15s/skip. → **done.**
+2. Constrain weights to loadable values + show plate breakdown inline. → **done.**
 3. Tap-friendly ± steppers with smart per-equipment increments, prefilled from last session. → **to build.**
 4. Non-destructive set/exercise editing. → **already immutable.**
 5. Explicit per-set progression cues (last value, reps/weight up-down badges, one-line rationale, phase chip). → **`prescribe().note` exists; surface it.**
 6. Keep Focus/primary lifts stable; variation opt-in. → backlog.
 7. First-class supersets. → backlog.
-8. Warmups visually distinct + one-tap collapse. → **distinct done; add collapse.**
+8. Warmups visually distinct + one-tap collapse. → **done.**
 9. Correct unit handling. → done (user chose convert+round).
 10. Deeper exercise detail / form cues. → How-To exists; expand later.
 11. Quick-calibration onboarding (seed starting weights). → **to build.**

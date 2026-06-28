@@ -1,3 +1,5 @@
+> **Archived 2026-06-28.** Superseded — the dedicated project (`clobxwwcjlmyckvkongk`) is provisioned and the data cutover is done; schema-as-code shipped under `supabase/migrations/`. Its unique data-preserving migration recipe was moved into `docs/runbook-backup-restore.md` (Appendix — data-preserving migration to a new Supabase project). Kept for historical / rollback reference.
+
 # Runbook — Migrate to a Dedicated Supabase Project (Daily Rep)
 
 > **Why this is a launch blocker.** Daily Rep currently shares Supabase project

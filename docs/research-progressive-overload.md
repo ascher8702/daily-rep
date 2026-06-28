@@ -1,12 +1,12 @@
 # Research: Safe progressive overload
 
-Sourced findings behind FitForge's auto-progression (`src/lib/progression.ts`). Conducted via multi-source web research with an adversarial verification pass; confidence is flagged where evidence is weak.
+Sourced findings behind Daily Rep's auto-progression (`src/lib/progression.ts`). Conducted via multi-source web research with an adversarial verification pass; confidence is flagged where evidence is weak.
 
 ## What the app implements
 
 `prescribe(exercise, history, repRange, profile, occurrence?)` returns the next session's `{ weight, reps, setCount, deload, note, incWeight }` using **double progression** plus experience/body/type-scaled load increments, a safety cap, plate snapping, and a stall→deload rule.
 
-Decision order (first match wins) — **corrected 2026-06-23** after an audit found the original logic auto-deloaded correctly-progressing lifters (see `docs/progression-audit-2026-06-23.md`):
+Decision order (first match wins) — **corrected 2026-06-23** after an audit found the original logic auto-deloaded correctly-progressing lifters (see `docs/archived/progression-audit-2026-06-23.md`):
 0. **Rep target changed → translate the load.** When the prescribed rep range for this lift differs from what the last session was prescribed for (goal switch, plan switch, undulating day — e.g. 5×5 → 5×15), the old weight no longer fits. Re-anchor the load via the demonstrated **estimated 1RM** (Epley) to the middle of the new range — lighter for higher reps, heavier for lower reps — then normal progression resumes. Each block stores its `targetReps`, so this never misfires on an AMRAP overshoot within the *same* scheme.
 1. **Top of range reached → progress.** When every set **at the top working load** (back-off/ramp/AMRAP-lower sets don't gate) hits `repMax`: add load (reset reps to `repMin`). On a **light dumbbell/machine lift** where the smallest loadable jump would exceed the 10% cap, **bank reps past `repMax`** (up to +5) before taking the coarse jump. A **bodyweight** lift maxed out suggests an added rep / external load instead.
 2. **Genuine plateau → deload.** Only when **3 consecutive same-load sessions fail to IMPROVE the top-set reps** (a true plateau — *not* merely "didn't hit `repMax`") → back off 10%, reset reps. Normal mid-range rep climbing (8→9→10 in an 8–12 range) is **progress, not a stall**.
@@ -38,3 +38,10 @@ All jumps additionally clamped to ≤10% of current load and snapped to plate in
 ## Flagged / tunable
 - The ACSM small-vs-large-muscle % direction is **unverified**; the upper/lower split is a reasonable proxy.
 - The classic %1RM→reps table **underestimates reps at light loads** (70% ≈ 15 reps, not 11; [Nuzzo 2024, PMC10933212](https://pmc.ncbi.nlm.nih.gov/articles/PMC10933212/)) and is exercise-specific — prefer RPE below ~80% 1RM.
+
+## Known divergences / deferred
+Spec gaps the engine knowingly doesn't model yet (rationale preserved here as the source audit is archived):
+- **Per-cycle 5/3/1 waves.** 5/3/1 blocks should progress per 4-week cycle, not per session ([Wendler 5/3/1](https://www.jimwendler.com/blogs/jimwendler-com/101065094-5-3-1-for-a-raw-strength); supported by Bell et al. 2025).
+- **Reset-shrink / LP-exhausted state.** A reset should also cut the per-session jump, and after 2–3 resets at the same wall flag that linear progression is exhausted (Starting Strength "The Reset"; Andy Baker / Mark Rippetoe, "Limits of Linear Progression"). The increment is currently stateless.
+- **RIR gate.** Load is added on rep count alone; a form/RIR flag would let the lifter veto a jump (ACSM one-variable principle; Helms/Zourdos RIR).
+- **Micro-loading.** Flat per-class `loadStep`, no fractional plates — the root reason the 10% cap is unsatisfiable on light lifts, where the smallest plate jump exceeds the cap (TriageMethod, Legion; PlateMate / PowerBlock fractional adders).

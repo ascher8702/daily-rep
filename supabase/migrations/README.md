@@ -33,3 +33,35 @@ Covered objects (cross-checked against the live `public` + `analytics` schemas):
 - **Drift:** treat the live project as downstream of this directory from now on. Do not apply ad-hoc DDL
   through the dashboard; add a migration here and `db push` instead. A CI drift check is a recommended
   follow-up (see the production-readiness task list).
+
+## Deferred / future work (rescued from archived audits)
+
+DB-flavored items that were held, deferred, or explicitly rejected in two point-in-time docs, kept here
+so they aren't lost when those docs are archived. None of these are applied; treat each as a flagged seam,
+not a TODO to action blindly.
+
+From the 2026-06-23 DB architecture audit:
+
+- **[LOW] ~5MB `data` size CHECK on `public.daily_rep_state`** (runaway-blob backstop) — **deferred**.
+  Only worth adding with a generous cap **and** client-side rejected-push handling: without it a rejected
+  upsert makes `pushNow` throw unhandled → silent sync stop.
+- **Automated RLS per-user isolation regression test** — still missing. Should assert `anon` sees 0 rows
+  and that user A cannot read user B's row.
+- **Rejected as HARMFUL — do NOT add:** a `client_updated_at <= now() + interval '1 day'` CHECK. Users with
+  fast device clocks send legitimately future timestamps; the check would silently break their cloud sync.
+  Also rejected: lowering `fillfactor` / per-table autovacuum tuning — premature on a 1-row-per-user,
+  PK-only table (HOT skips the unchanged index; the real cost is TOAST, which `fillfactor` doesn't touch).
+
+From the session-analytics design spec:
+
+- **Partition `analytics_session_sets`** via `pg_partman` (monthly RANGE on `performed_at`) at the
+  data-driven threshold (~100M set rows / vacuum bloat). The PK must then include the partition key — a
+  surrogate `bigint`, or `set_id + performed_at`.
+- **Convert the cohort matview refresh to an incremental rollup** when a full refresh gets heavy. The
+  `analytics.refresh_cohort_hourly` / `analytics.refresh_cohort_nightly` procedures are the seam.
+- **Persist an immutable original-unit weight at `finishWorkout`** to remove `*_kg` gym-rounding drift
+  from analytics (a future client change).
+- **On unit switch, prefer an in-place `UPDATE`** of stored set weights over `DELETE` + reinsert.
+
+_Provenance: captured from `docs/archived/db-architecture-audit-2026-06-23.md` and
+`docs/archived/sessions-analytics-spec.json`._

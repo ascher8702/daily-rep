@@ -1,14 +1,14 @@
-# FitForge — User Workflow Map
+# Daily Rep — User Workflow Map
 
-_Generated 2026-06-23 by a 7-agent functional audit (one agent per screen-area), maintained as flows change. Outstanding functional bugs are tracked in docs/loop-progress.md._
+_Generated 2026-06-23 by a 7-agent functional audit (one agent per screen-area), maintained as flows change; refreshed 2026-06-28 (rename to Daily Rep, account/paywall gate, Onboarding + Settings updates). Outstanding functional bugs are tracked in docs/ux-improvement-backlog.md._
 
 Status legend: **OK** works as expected · **BUG** confirmed functional defect (see bug list) · **MINOR** low-impact UX gap · **VERIFIED-OK** audit flagged a concern but code inspection shows it works
 
 ---
 
-## 1. Auth & First Run (`Auth.tsx`, `useAuth.ts`, `AppShell.tsx`)
+## 1. Auth & First Run (`src/screens/Auth.tsx`, `useAuth.ts`, `src/app/AppShell.tsx`)
 
-The whole app is **state-gated** by `AppShell.tsx` — `!signedInEmail` → Auth screen; `!onboarded` → Onboarding; otherwise the app. Gates are reactive, so clearing auth/profile state re-routes automatically with no `router.push` needed.
+The whole app is **state-gated** by `src/app/AppShell.tsx`, in order: password-recovery intercept (`recovering` → ResetPassword) → `!signedInEmail && !localOnly` → Auth → entitlement gate (`!entitled` → Paywall; this is a **paid** app, so signing in alone isn't enough — you need an active subscription or a live 30-day card-free trial) → `!onboarded` → Onboarding → one-time TrialStart welcome (new trialing user, `!trialWelcomeSeen`) → the app. Public legal routes (`/privacy`, `/terms`) and `/reset-password` bypass the gate entirely. `localOnly` is a dev fallback that skips the cloud auth + entitlement gates. Gates are reactive, so clearing auth/profile state re-routes automatically with no `router.push` needed.
 
 | Screen | Action | Status |
 |---|---|---|
@@ -23,21 +23,24 @@ The whole app is **state-gated** by `AppShell.tsx` — `!signedInEmail` → Auth
 | Auth | Busy guard — re-taps ignored while request pending ("Please wait…") | OK |
 | Auth | Account persisted across tab close; mode picked by account existence | OK |
 
-## 2. Onboarding (`Onboarding.tsx`, `useStore.ts`)
+## 2. Onboarding (`src/screens/Onboarding.tsx`, `useStore.ts`)
+
+Seven steps (0-indexed): **Welcome** (name + gender) · **Goal** · **Experience** (+ units + bodyweight) · **Schedule** (days/week + session length) · **Equipment** · **Muscles** (emphasize/avoid) · **Review**. Equipment is the gating step.
 
 | Step | Action | Status |
 |---|---|---|
-| Name | Empty name → falls back to "Athlete" | OK |
-| Name | Trailing/leading spaces trimmed; capped at 30 chars (`maxLength`) | OK |
-| Equipment (step 3) | Continue disabled until ≥1 item selected | OK |
+| Welcome | Name prefilled from sign-up email; empty name → falls back to "athlete"; trimmed, capped at 30 chars (`maxLength`) | OK |
+| Welcome | Gender (optional) — female/male toggle; re-tap clears | OK |
+| Goal / Experience | Radio choice; units (lb/kg) and bodyweight (optional) collected on the Experience step | OK |
+| Schedule | Days-per-week (2–6) + session-length slider (live-updates from default 50 min) | OK |
+| Equipment (step index 4) | Continue disabled until ≥1 item selected (`canNext` gates on `equipment.length`) | OK |
 | Equipment | Preset select applies item set; active states correct | OK |
 | Equipment | Individual toggle add/remove | OK |
-| Focus muscles | Optional toggle; may be left empty | OK |
-| Session length | Slider live-updates from default 50 min | OK |
-| Final step | Shows "You're all set, {name}…" + "Build my first workout" | OK |
-| Final step | "Build my first workout" → `complete()` (onboarded=true) → `generate()` → home with session | OK |
-| Nav | Back button preserves state-controlled answers | OK |
-| Nav | On final step only Build button shows (no Continue) | OK |
+| Muscles | Optional emphasize/avoid mode toggle; avoided muscles become `preference` rows in `avoiding`; may be left empty | OK |
+| Review | Shows "You're all set, {name}." + editable summary rows; recommended starter plan when matched | OK |
+| Review | "Start {plan}" → `complete()` (onboarded=true) → `startPlan()`; "Just build single workouts" → `complete()` → `generate()` | OK |
+| Nav | Back button preserves state-controlled answers; Welcome + Muscles are skippable (sensible defaults) | OK |
+| Nav | On Review step only the CTAs show (no Continue) | OK |
 | Persistence | Onboarding state not persisted mid-flow (intentional); restart from step 0 | OK |
 | Recovery | Corrupt/null `onboarded` coerced to false → re-gated to Onboarding | OK |
 
@@ -55,12 +58,12 @@ The whole app is **state-gated** by `AppShell.tsx` — `!signedInEmail` → Auth
 | Plan-day hero | Skip to next day → confirm → `skipPlanDay()` (untags session) | OK |
 | Plan status | Manage → `/plans` | OK |
 | Plan status | Start [planDay] instead → confirm → generate + start | OK |
-| Recovery diagram | front/back toggle | **MINOR** (selection card not cleared on toggle) |
+| Recovery diagram | front/back toggle | OK (fixed; the front/back body diagram + stale selection card was retired in the Blaze redesign — Home now shows `RecoveryRing`/`RecoveryBar`, with no view toggle to leave a selection behind) |
 | Recovery diagram | Tap muscle toggles recovery card | OK |
 | Focus pills | Tap → confirm if logged → `generate({focusOverride})` + `/session` | OK |
 | Shortcuts | "Rebuild a fresh workout" → confirm if logged → `generate()` | OK |
 | Empty state | "Follow a Plan" card → `/plans` | OK |
-| All confirm-gated actions | Concurrent confirms | **BUG** (ConfirmProvider race) |
+| All confirm-gated actions | Concurrent confirms | OK (fixed; `ConfirmProvider` now holds a QUEUE — a second `confirm()` while one is pending shows after it and each promise resolves — `src/components/ConfirmProvider.tsx`) |
 
 ## 4. Session (`app/session/page.tsx`, `session/[id]`)
 
@@ -118,7 +121,7 @@ The whole app is **state-gated** by `AppShell.tsx` — `!signedInEmail` → Auth
 | Edit plan name (maxLength 40) | OK |
 | Change goal/level/equipment/days settings | OK |
 | Add a day | OK |
-| Remove a day | **BUG** (can remove all → unsaveable dead-end) |
+| Remove a day | OK (fixed; the trash button is disabled at one day — `schedule.length === 1` — so a plan always keeps ≥1 day, `src/app/plans/builder/page.tsx` ~309) |
 | Move day up/down (disabled at bounds) | OK |
 | Edit day title (title + label) | OK |
 | Add lift via ExercisePicker (excludes existing, default sets/reps by goal) | OK |
@@ -180,6 +183,8 @@ The whole app is **state-gated** by `AppShell.tsx` — `!signedInEmail` → Auth
 | Reset all data (confirm → resetAll → AppShell re-gates to Onboarding) | VERIFIED-OK |
 | Sign out (clears email → AppShell re-gates to Auth) | VERIFIED-OK |
 | Browse plans → `/plans` | OK |
+| Membership → `/settings/membership` (plan/trial status, manage subscription) | OK |
+| Injuries → `/settings/injuries` (working-around areas + rehab, feeds `avoiding`) | OK |
 
 ---
 

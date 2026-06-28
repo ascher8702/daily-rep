@@ -1,3 +1,5 @@
+> **Archived 2026-06-28.** Point-in-time code audit (pre-"Daily Rep" rename). All CRITICAL/HIGH/MED findings shipped fixes in `src/lib/progression.ts` + `src/lib/generator.ts` with regression tests in `src/__tests__/progression.test.ts`; the remaining spec-gaps and their sourced citations now live in `docs/research-progressive-overload.md`. Kept for history — not current.
+
 <!-- Generated 2026-06-23 by a 5-agent research + 6-agent adversarial code-audit workflow (46 agents, 26 verified findings). The CRITICAL/HIGH bugs have since been FIXED in src/lib/progression.ts (top-set evaluation + failure-to-improve stall + rep-bank cap + occurrence + bodyweight cue) and src/lib/generator.ts (incWeight), with regression tests in progression.test.ts. Remaining items are spec gaps (per-cycle 5/3/1, deload-state, fractional plates, RIR gate) — tracked as future work. -->
 
 # FitForge weight-progression audit (2026-06-23)

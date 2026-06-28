@@ -8,7 +8,7 @@
    the Blaze surface ramp. The accent + brand (--color-accent*) values below are the orange DEFAULT;
    they're overridden at runtime by the accent picker (see lib/theme.ts accentVars), so the whole brand
    re-themes with the chosen accent. Recovery lime usages use their own --color-recovery-* tokens and
-   stay fixed. See docs/redesign-blaze.md. */
+   stay fixed. See docs/archived/redesign-blaze.md. */
 :root,
 .dark {
   color-scheme: dark;

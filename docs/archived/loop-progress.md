@@ -1,3 +1,5 @@
+> **Archived 2026-06-28.** Point-in-time autonomous-loop progress/handoff log (stop deadline 2026-06-24, expired). Every "held" item has since shipped, and it uses pre-rename `fitforge-*` names. Kept for history — do not read as current. Live state: schema under `supabase/migrations/`, project `clobxwwcjlmyckvkongk`, account-required (no `fitforge-*` keys).
+
 # Autonomous Improvement Loop — Progress & Handoff
 
 **Goal:** make significant, verified improvements to the app (renamed **FitForge → "Daily Rep"** 2026-06-23) until **7pm (19:00) local on 2026-06-24**, one coherent change per loop iteration. Stop the loop (omit ScheduleWakeup) once `date` shows ≥ 19:00 on 2026-06-24, then post a final summary.

@@ -1,3 +1,5 @@
+> **Archived 2026-06-28.** Completed Charge/Blaze redesign build-plan (it.1–20, all shipped/verified). The live UI plus the `tailwind.config.ts` / `globals.css` token layer are the source of truth now. Kept for history — not current.
+
 # Redesign — "Charge / Blaze" (token-driven)
 
 > **User directive (2026-06-24):** implement the redesign in `/Users/vlad/Downloads/Fitness app redesign styles`, following best FE/system-design principles — **reusable components, design tokens (tokenization)**. Chosen direction: **Charge / Blaze**. Scope: **replace** the current look, but **token-driven** (CSS-variable token layer + reusable components, so themes remain possible later). This is now the loop's HEADLINE goal — implemented incrementally, **never regressing shipped functionality, the progression engine, analytics, sync, auth, or the test suite.**

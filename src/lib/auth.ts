@@ -33,7 +33,7 @@ export function emailValid(email: string): boolean {
 /** Returns a problem message, or null when the password is acceptable. Enforced on SIGN-UP only
  *  (sign-in never length-checks, so existing shorter-password accounts are never locked out). The
  *  ≥8 floor matches the Supabase Auth min-length + leaked-password (HIBP) protection that should be
- *  enabled in the dashboard — see docs/loop-progress.md `[HUMAN]` items. */
+ *  enabled in the dashboard — see docs/runbook-deploy.md `[HUMAN]` items. */
 export function passwordIssue(password: string): string | null {
   if (password.length < 8) return 'Use at least 8 characters'
   return null

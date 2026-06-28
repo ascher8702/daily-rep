@@ -1,3 +1,5 @@
+> **Archived 2026-06-28.** Completed build plan — all 7 stages shipped and live in `supabase/migrations/20260627000000_baseline_schema.sql` (the per-stage migrations are under `supabase/migrations/archive/`). Deferred scaling items were moved to `supabase/migrations/README.md`. Kept for historical / design context — not a current map.
+
 # Session-analytics layer — build plan & status
 
 Adds a queryable, **set-level** analytics projection over the offline-first JSONB blob so we can do

@@ -1,3 +1,5 @@
+> **Archived 2026-06-28.** Point-in-time DB audit. Superseded: project is now `clobxwwcjlmyckvkongk` / table `public.daily_rep_state`; the monotonic-clock guard + pull-on-visibility shipped; schema is version-controlled under `supabase/migrations/`. Its deferred/rejected-DDL guardrails were moved to `supabase/migrations/README.md` (Deferred / future work). Kept for history — not current.
+
 # DB / data-architecture audit — 2026-06-23
 
 Five independent database/system architects audited the Supabase backend (project
