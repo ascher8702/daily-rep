@@ -55,12 +55,14 @@ pnpm install --frozen-lockfile
 pnpm lint
 pnpm typecheck
 pnpm test
+pnpm audit:prod          # BLOCKING for production: production dependency advisories
 pnpm check:legal          # BLOCKING for production: legal placeholders must be filled by counsel
 pnpm check:prod           # BLOCKING for production: static release-regression guards
 NEXT_PUBLIC_SUPABASE_URL=… NEXT_PUBLIC_SUPABASE_ANON_KEY=… pnpm build
 ```
 
-`check:legal` and `check:prod` are hard gates in CI and at deploy: `vercel.json` runs
+`audit:prod`, `check:legal`, and `check:prod` are hard gates in CI. `check:legal` and `check:prod`
+also run at deploy: `vercel.json` runs
 `pnpm check:legal && pnpm check:prod && pnpm build`, so a Vercel build fails while legal placeholders
 remain or a release-blocking production guard regresses. Do not bypass them.
 

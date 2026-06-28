@@ -38,6 +38,9 @@ jobs:
       - name: Unit tests
         run: pnpm test
 
+      - name: Production dependency audit
+        run: pnpm audit:prod
+
       - name: Legal placeholder check
         run: pnpm check:legal
 

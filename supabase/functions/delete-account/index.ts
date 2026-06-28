@@ -83,9 +83,15 @@ Deno.serve(async (req) => {
     }
 
     const { error: pErr } = await admin.rpc('purge_user_data', { p_user: uid })
-    if (pErr) return json({ error: 'purge failed: ' + pErr.message }, 500)
+    if (pErr) {
+      console.error('[delete-account] purge failed', { uid, msg: pErr.message })
+      return json({ error: 'Could not delete your account. Please try again.' }, 500)
+    }
     const { error: dErr } = await admin.auth.admin.deleteUser(uid)
-    if (dErr) return json({ error: 'auth delete failed: ' + dErr.message }, 500)
+    if (dErr) {
+      console.error('[delete-account] auth delete failed', { uid, msg: dErr.message })
+      return json({ error: 'Could not delete your account. Please try again.' }, 500)
+    }
     return json({ ok: true, deleted: uid })
   } catch (e) {
     console.error('[delete-account] error', e)

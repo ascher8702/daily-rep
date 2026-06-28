@@ -1,6 +1,9 @@
 'use client'
 
 import React from 'react'
+import { idbStorage } from '@/lib/idbStorage'
+import { clearSyncMetadata } from '@/lib/sync'
+import { reportError } from '@/lib/telemetry'
 
 interface State {
   hasError: boolean
@@ -17,18 +20,19 @@ export default class ErrorBoundary extends React.Component<{ children: React.Rea
     return { hasError: true }
   }
 
-  componentDidCatch(error: unknown) {
-    // eslint-disable-next-line no-console
-    console.error('Daily Rep crashed:', error)
+  componentDidCatch(error: unknown, info: React.ErrorInfo) {
+    reportError(error, { scope: 'react-error-boundary', componentStack: info.componentStack })
   }
 
-  private hardReset = () => {
+  private hardReset = async () => {
     try {
+      await idbStorage.removeItem('daily-rep-v1')
       window.localStorage.removeItem('daily-rep-v1')
+      clearSyncMetadata()
     } catch {
       /* ignore */
     }
-    window.location.href = '/'
+    window.location.assign('/')
   }
 
   render() {

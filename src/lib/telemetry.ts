@@ -37,7 +37,7 @@ export function registerTelemetrySink(next: TelemetrySink | null): void {
   sink = next
 }
 
-/** True when a backend is wired (e.g. Sentry, registered in sentry.client.config.ts). Lets the global
+/** True when a backend is wired (e.g. Sentry, registered in instrumentation-client.ts). Lets the global
  *  error handler yield to a backend that captures uncaught errors natively, avoiding double-reporting. */
 export function hasTelemetrySink(): boolean {
   return sink !== null

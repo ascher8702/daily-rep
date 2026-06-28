@@ -16,16 +16,31 @@ function read(rel) {
 
 const checks = [
   {
-    label: 'Sentry deletes uploaded source maps and disables maps without an upload token',
+    label: 'Sentry deletes uploaded source maps and uploads only on CI/Vercel with a token',
     file: 'next.config.mjs',
     test: (s) =>
+      s.includes('const shouldUploadSourcemaps =') &&
+      s.includes("process.env.CI === 'true'") &&
+      s.includes("process.env.VERCEL === '1'") &&
       s.includes('deleteSourcemapsAfterUpload: true') &&
-      s.includes('disable: !process.env.SENTRY_AUTH_TOKEN'),
+      s.includes('disable: !shouldUploadSourcemaps'),
+  },
+  {
+    label: 'Sentry uses v10 webpack options for debug/replay tree-shaking',
+    file: 'next.config.mjs',
+    test: (s) =>
+      s.includes('webpack: {') &&
+      s.includes('removeDebugLogging: true') &&
+      !s.includes('disableLogger:') &&
+      !s.includes('\n  automaticVercelMonitors:'),
   },
   {
     label: 'Sentry DSNs are configured only through environment variables',
-    file: 'sentry.client.config.ts',
-    test: (s) => !s.includes('ingest.us.sentry.io') && s.includes('process.env.NEXT_PUBLIC_SENTRY_DSN'),
+    file: 'src/instrumentation-client.ts',
+    test: (s) =>
+      !s.includes('ingest.us.sentry.io') &&
+      s.includes('process.env.NEXT_PUBLIC_SENTRY_DSN') &&
+      s.includes('onRouterTransitionStart'),
   },
   {
     label: 'Server Sentry DSN is configured only through environment variables',
@@ -63,6 +78,26 @@ const checks = [
       s.includes('return json({ error:') &&
       s.includes('stripe.subscriptions.cancel') &&
       !s.includes('continuing):'),
+  },
+  {
+    label: 'Account deletion never returns raw backend exception strings',
+    file: 'supabase/functions/delete-account/index.ts',
+    test: (s) => !s.includes("'purge failed: '") && !s.includes("'auth delete failed: '"),
+  },
+  {
+    label: 'React error boundary reports crashes and clears IndexedDB-backed app state',
+    file: 'src/components/ErrorBoundary.tsx',
+    test: (s) =>
+      s.includes("reportError(error, { scope: 'react-error-boundary'") &&
+      s.includes("idbStorage.removeItem('daily-rep-v1')") &&
+      s.includes('clearSyncMetadata()'),
+  },
+  {
+    label: 'Production dependency audit uses the public advisory endpoint explicitly',
+    file: 'package.json',
+    test: (s) =>
+      s.includes('"audit:prod"') &&
+      s.includes('pnpm audit --prod --registry=https://registry.npmjs.org'),
   },
   {
     label: 'Client entitlement fails closed with no cached/verified row',
