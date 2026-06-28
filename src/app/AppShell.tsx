@@ -24,10 +24,15 @@ import TrialStart from '@/screens/TrialStart'
 const PUBLIC_ROUTES = ['/privacy', '/terms', '/reset-password']
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
-  // Gate on mount so persisted (localStorage) state can't cause a hydration
-  // mismatch between the server-rendered HTML and the client's first paint.
+  // Gate on mount so persisted state can't cause a hydration mismatch between the server-rendered
+  // HTML and the client's first paint.
   const [mounted, setMounted] = useState(false)
   useEffect(() => setMounted(true), [])
+
+  // Persisted state now lives in IndexedDB (async), so it isn't populated synchronously on first
+  // render. Wait for rehydration before gating on profile/onboarded/etc., or we'd flash onboarding
+  // and (worse) let sync push empty default state over the user's cloud data.
+  const hydrated = useStore((s) => s._hasHydrated)
 
   const onboarded = useStore((s) => s.profile.onboarded)
   const trialWelcomeSeen = useStore((s) => s.profile.trialWelcomeSeen)
@@ -78,8 +83,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     return <div className="mx-auto max-w-md min-h-full">{children}</div>
   }
 
-  // wait for both hydration and the auth bootstrap so the gate doesn't flash the sign-in screen
-  if (!mounted || !authReady) {
+  // wait for mount, store rehydration (async IndexedDB), and the auth bootstrap so the gate doesn't
+  // flash the sign-in/onboarding screens or act on pre-hydration default state
+  if (!mounted || !hydrated || !authReady) {
     return (
       <div className="mx-auto max-w-md min-h-full">
         <HomeSkeleton />

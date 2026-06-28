@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
+import { idbStorage } from '../lib/idbStorage'
 import type {
   ActivePlan,
   Avoidance,
@@ -79,6 +80,11 @@ export interface AppState {
    * plan day is generated while it's the active plan. NEVER mutates the shared plan definition.
    */
   planDayEdits: Record<string, Record<string, { add: string[]; remove: string[] }>>
+
+  /** True once `persist` has finished rehydrating from (async) IndexedDB storage. NOT persisted —
+   *  AppShell and cloud sync gate on it so they never render/push pre-hydration default state. */
+  _hasHydrated: boolean
+  setHasHydrated: (v: boolean) => void
 
   // ---- onboarding / profile ----
   completeOnboarding: (p: Partial<Profile>) => void
@@ -783,6 +789,27 @@ export function mergePersisted(persisted: unknown, current: AppState): AppState 
   }
 }
 
+/**
+ * The exact subset of state we persist to storage AND mirror to the cloud. Excludes transient UI
+ * (rest timer) and the `_hasHydrated` flag/its setter. Shared by `persist`'s `partialize` and the
+ * cloud-sync snapshot (`sync.ts`), so local and cloud always serialize the identical shape.
+ */
+export function partializeState(s: AppState) {
+  return {
+    profile: s.profile,
+    workouts: s.workouts,
+    current: s.current,
+    activePlan: s.activePlan,
+    customPlans: s.customPlans,
+    planProgress: s.planProgress,
+    planOverrides: s.planOverrides,
+    planDayEdits: s.planDayEdits,
+    // keep a dismissed "working around" alert dismissed across a reload too (it's keyed by the
+    // session id, so a different session still gets its own heads-up) — friendlier than re-nagging
+    avoidNoticeDismissedId: s.avoidNoticeDismissedId,
+  }
+}
+
 export const useStore = create<AppState>()(
   persist(
     (set, get) => ({
@@ -797,6 +824,8 @@ export const useStore = create<AppState>()(
       planProgress: {},
       planOverrides: {},
       planDayEdits: {},
+      _hasHydrated: false,
+      setHasHydrated: (v: boolean) => set({ _hasHydrated: v }),
 
       completeOnboarding: (p) =>
         set((s) => ({ profile: { ...s.profile, ...p, onboarded: true } })),
@@ -1694,31 +1723,18 @@ export const useStore = create<AppState>()(
       // Passthrough migration so a future version bump can't silently discard user data;
       // merge() then defensively coerces whatever shape comes through.
       migrate: (persisted) => persisted as AppState,
-      // Guard localStorage so the store module can be imported during SSR.
-      storage: createJSONStorage(() =>
-        typeof window !== 'undefined'
-          ? window.localStorage
-          : {
-              getItem: () => null,
-              setItem: () => {},
-              removeItem: () => {},
-            },
-      ),
-      // Don't persist transient rest-timer UI state — a reload after the timer
-      // elapsed shouldn't leave a "Rest complete" bar stuck on every screen.
-      partialize: (s) => ({
-        profile: s.profile,
-        workouts: s.workouts,
-        current: s.current,
-        activePlan: s.activePlan,
-        customPlans: s.customPlans,
-        planProgress: s.planProgress,
-        planOverrides: s.planOverrides,
-        planDayEdits: s.planDayEdits,
-        // keep a dismissed "working around" alert dismissed across a reload too (it's keyed by the
-        // session id, so a different session still gets its own heads-up) — friendlier than re-nagging
-        avoidNoticeDismissedId: s.avoidNoticeDismissedId,
-      }),
+      // IndexedDB-backed storage (via the idbStorage adapter) so history can grow past localStorage's
+      // ~5MB cap. It's SSR-safe (no `indexedDB` → falls back) and degrades to localStorage/in-memory.
+      storage: createJSONStorage(() => idbStorage),
+      // IndexedDB is async, so the store rehydrates a tick after creation. Flip `_hasHydrated` when it
+      // finishes (even with nothing stored, so a fresh user's gate doesn't hang) — AppShell and sync
+      // wait on this before rendering the app or pushing to the cloud.
+      onRehydrateStorage: () => (_state, error) => {
+        if (error) console.warn('[persist] IndexedDB rehydrate failed:', error)
+        useStore.setState({ _hasHydrated: true })
+      },
+      // Don't persist transient rest-timer UI state or the hydration flag — see partializeState.
+      partialize: (s) => partializeState(s),
       // Defensively merge persisted state over defaults so a corrupt/older/partial
       // blob can't hydrate with the wrong shapes and crash the app (no array, etc.).
       merge: (persisted, current) => mergePersisted(persisted, current as AppState),

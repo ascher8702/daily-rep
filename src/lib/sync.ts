@@ -1,7 +1,7 @@
 import { supabase, STATE_TABLE } from './supabase'
 import { reportError, reportEvent } from './telemetry'
 import type { Json } from './database.types'
-import { useStore, mergePersisted, type AppState } from '../store/useStore'
+import { useStore, mergePersisted, partializeState, type AppState } from '../store/useStore'
 
 /**
  * Offline-first cloud sync. localStorage (the Zustand `persist` blob under `daily-rep-v1`) stays the
@@ -13,7 +13,6 @@ import { useStore, mergePersisted, type AppState } from '../store/useStore'
  */
 
 const META_KEY = 'daily-rep-sync-meta' // { clientUpdatedAt } — our logical last-edit clock
-const STORE_KEY = 'daily-rep-v1' // the Zustand persist key
 
 let clientUpdatedAt = readClock()
 let pushTimer: ReturnType<typeof setTimeout> | null = null
@@ -105,11 +104,31 @@ export function parsePersistedState(raw: string | null): Json | null {
   }
 }
 
+/**
+ * The exact blob we sync, read from the in-memory store — the source of truth once hydrated — rather
+ * than from storage. This decouples sync from the (now async, IndexedDB) persistence backend: we no
+ * longer read the raw localStorage blob, and `partializeState` guarantees local + cloud serialize the
+ * identical shape. (`parsePersistedState` above stays for parsing a raw stored/cloud blob in tests.)
+ */
 function persistedState(): Json | null {
+  return partializeState(useStore.getState()) as unknown as Json
+}
+
+/**
+ * Resolve once `persist` has finished its async (IndexedDB) rehydration, so the very first reconcile
+ * can't read pre-hydration default state and push it over the user's cloud data.
+ */
+function waitForHydration(): Promise<void> {
   try {
-    return parsePersistedState(localStorage.getItem(STORE_KEY))
+    if (useStore.persist.hasHydrated()) return Promise.resolve()
+    return new Promise<void>((resolve) => {
+      const unsub = useStore.persist.onFinishHydration(() => {
+        unsub()
+        resolve()
+      })
+    })
   } catch {
-    return null // localStorage unavailable (SSR / non-DOM env)
+    return Promise.resolve() // persist API unavailable → don't block sync
   }
 }
 
@@ -214,6 +233,9 @@ export async function startSync(uid: string): Promise<void> {
   if (!supabase) return
   userId = uid
   lastPushedJson = ''
+  // Persisted state loads asynchronously from IndexedDB; wait for it before the first reconcile so we
+  // never adopt-or-overwrite based on empty default state (which could clobber the cloud copy).
+  await waitForHydration()
   await pullAndReconcile()
   unsubscribe?.()
   // any persisted state change advances our logical clock (strictly increasing — see nextClock) and
