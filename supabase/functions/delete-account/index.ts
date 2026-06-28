@@ -5,9 +5,9 @@ import { checkRateLimit, InMemoryRateLimitStore, LIMITS, rateLimitResponseHeader
 
 // GDPR Art.17 erasure: deletes the authenticated caller's data (across public + analytics) then their
 // auth user. verify_jwt=true gates this to signed-in callers; we re-derive the uid from the JWT so a
-// user can only ever delete THEMSELVES (no IDOR). Before purging we best-effort cancel any live Stripe
-// subscription so a deleted account is never billed again (the subscriptions row itself is removed by
-// the ON DELETE CASCADE when the auth user is deleted).
+// user can only ever delete THEMSELVES (no IDOR). Before purging, any live Stripe subscription must be
+// canceled successfully; otherwise the delete is rejected so a removed account is never left billing.
+// The subscriptions row itself is removed by the ON DELETE CASCADE when the auth user is deleted.
 //
 // RETENTION CARVE-OUT: public.trial_ledger (a normalized-email anti-trial-abuse marker) is INTENTIONALLY
 // NOT erased — it has no FK to auth.users and purge_user_data does not touch it, so a deleted user can't
@@ -18,6 +18,8 @@ const cors = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
+
+const CANCEL_BEFORE_DELETE_STATUSES = ['active', 'trialing', 'past_due', 'paused', 'unpaid', 'incomplete']
 
 // Per-instance fixed-window limiter (one Map per cold start; see spec §11 on warm-instance scope).
 const rateStore = new InMemoryRateLimitStore()
@@ -50,25 +52,34 @@ Deno.serve(async (req) => {
 
     const admin = createClient(url, service)
 
-    // Best-effort: cancel any live Stripe subscription so we don't keep billing a deleted account.
-    try {
+    const { data: subRow, error: subErr } = await admin
+      .from('subscriptions')
+      .select('stripe_subscription_id, status')
+      .eq('user_id', uid)
+      .maybeSingle()
+    if (subErr) return json({ error: 'Could not verify billing status. Please try again.' }, 500)
+
+    // If there is a live Stripe subscription, cancellation must succeed before erasing the account. A
+    // deleted auth user with a still-billing Stripe subscription is much worse than a retryable delete.
+    if (
+      subRow?.stripe_subscription_id &&
+      CANCEL_BEFORE_DELETE_STATUSES.includes(String(subRow.status))
+    ) {
       const stripeKey = Deno.env.get('STRIPE_SECRET_KEY')
-      if (stripeKey) {
-        const { data: subRow } = await admin
-          .from('subscriptions')
-          .select('stripe_subscription_id')
-          .eq('user_id', uid)
-          .maybeSingle()
-        if (subRow?.stripe_subscription_id) {
-          const stripe = new Stripe(stripeKey, {
-            apiVersion: '2024-06-20',
-            httpClient: Stripe.createFetchHttpClient(),
-          })
-          await stripe.subscriptions.cancel(subRow.stripe_subscription_id as string)
-        }
+      if (!stripeKey) {
+        console.error('[delete-account] missing STRIPE_SECRET_KEY with active subscription', { uid })
+        return json({ error: 'Could not cancel your subscription. Please contact support.' }, 500)
       }
-    } catch (e) {
-      console.warn('[delete-account] stripe cancel failed (continuing):', String(e))
+      try {
+        const stripe = new Stripe(stripeKey, {
+          apiVersion: '2024-06-20',
+          httpClient: Stripe.createFetchHttpClient(),
+        })
+        await stripe.subscriptions.cancel(subRow.stripe_subscription_id as string)
+      } catch (e) {
+        console.warn('[delete-account] stripe cancel failed:', String(e))
+        return json({ error: 'Could not cancel your subscription. Please try again before deleting your account.' }, 502)
+      }
     }
 
     const { error: pErr } = await admin.rpc('purge_user_data', { p_user: uid })

@@ -17,10 +17,9 @@ const cors = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
 
-// Test-mode price IDs are NOT secret — baked in as defaults, overridable via env for live mode.
-const PRICES: Record<string, string> = {
-  monthly: Deno.env.get('STRIPE_PRICE_MONTHLY') ?? 'price_1Tn00qLy7BVo8A05C1HnWdV9',
-  annual: Deno.env.get('STRIPE_PRICE_ANNUAL') ?? 'price_1Tn00rLy7BVo8A05K0rqNBRt',
+const PRICES: Record<string, string | undefined> = {
+  monthly: Deno.env.get('STRIPE_PRICE_MONTHLY') || undefined,
+  annual: Deno.env.get('STRIPE_PRICE_ANNUAL') || undefined,
 }
 
 const DAY_MS = 86_400_000
@@ -50,8 +49,11 @@ Deno.serve(async (req) => {
     if (!authHeader) return json({ error: 'missing authorization' }, 401)
 
     const { plan } = await req.json().catch(() => ({} as { plan?: string }))
-    const priceId = PRICES[String(plan)]
-    if (!priceId) return json({ error: 'invalid plan' }, 400)
+    const planId = String(plan)
+    if (!Object.prototype.hasOwnProperty.call(PRICES, planId)) return json({ error: 'invalid plan' }, 400)
+    const priceId = PRICES[planId]
+    const appUrl = Deno.env.get('APP_URL')
+    if (!priceId || !appUrl) return json({ error: 'billing is not configured' }, 500)
 
     const userClient = createClient(url, anon, { global: { headers: { Authorization: authHeader } } })
     const { data: { user }, error: uErr } = await userClient.auth.getUser()
@@ -131,9 +133,6 @@ Deno.serve(async (req) => {
     const cap = created ? created + TRIAL_DAYS * DAY_MS : tEnd
     const effectiveTrialEnd = Math.min(tEnd, cap)
     if (effectiveTrialEnd > Date.now() + TRIAL_MIN_LEAD_MS) trialEnd = Math.floor(effectiveTrialEnd / 1000)
-
-    const origin = req.headers.get('origin')
-    const appUrl = Deno.env.get('APP_URL') || origin || 'http://localhost:3000'
 
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',

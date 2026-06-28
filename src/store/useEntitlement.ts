@@ -16,9 +16,8 @@ import { deriveEntitlement, fetchSubscription, type Entitlement, type Subscripti
  * of client tricks. (Until that migration is pushed to the project, this remains a client-only gate.)
  * We still deliberately AVOID a blanket fail-open on read errors here: that would let anyone lapsed block a
  * single request and get in. Instead we cache the last-known-good entitlement per user and fall back to
- * THAT on error — a returning lapsed user stays gated, while a paying user keeps offline access. Only a
- * user we have never successfully resolved (e.g. a brand-new account on a flaky first load) gets a
- * provisional pass, so we never lock out a legitimate new user.
+ * THAT on error — a returning lapsed user stays gated, while a paying user keeps offline access. A user
+ * we have never successfully resolved fails closed until entitlement can be verified.
  */
 
 interface EntitlementStore extends Entitlement {
@@ -93,8 +92,7 @@ export const useEntitlement = create<EntitlementStore>((set) => ({
       const row = await fetchSubscription()
       if (!row) {
         // The signup trigger seeds a row in the same transaction, so a signed-in user should always
-        // have one. A missing row is unexpected — surface it (deriveEntitlement still fails open so a
-        // brand-new user mid-provisioning isn't locked out, but now it's observable, not silent).
+        // have one. A missing row is unexpected and fails closed via deriveEntitlement.
         reportError(new Error('entitlement: no subscription row for signed-in user'), {
           scope: 'entitlement.nullRow',
         })
@@ -105,10 +103,9 @@ export const useEntitlement = create<EntitlementStore>((set) => ({
     } catch (e) {
       reportError(e, { scope: 'entitlement.refresh' })
       // Do NOT blanket fail-open — that makes the paywall bypassable by blocking one request. Prefer
-      // this user's last-known-good snapshot; only grant a provisional pass if we have never resolved
-      // them (so a genuine first-load blip on a new account doesn't lock them out).
+      // this user's last-known-good snapshot; with no cache, fail closed until entitlement can verify.
       const cached = loadCache()
-      set(cached ?? { ...INITIAL, loading: false, entitled: true })
+      set(cached ?? { ...INITIAL, loading: false })
     }
   },
 

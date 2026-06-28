@@ -19,9 +19,10 @@ import {
  * The row-mapping logic lives in ../_shared/subscription.ts (unit-tested).
  */
 
-const PRICES: PriceMap = {
-  monthly: Deno.env.get('STRIPE_PRICE_MONTHLY') ?? 'price_1Tn00qLy7BVo8A05C1HnWdV9',
-  annual: Deno.env.get('STRIPE_PRICE_ANNUAL') ?? 'price_1Tn00rLy7BVo8A05K0rqNBRt',
+function priceMap(): PriceMap | null {
+  const monthly = Deno.env.get('STRIPE_PRICE_MONTHLY')
+  const annual = Deno.env.get('STRIPE_PRICE_ANNUAL')
+  return monthly && annual ? { monthly, annual } : null
 }
 
 // Signature verification needs the WebCrypto-backed provider in Deno; it carries no secret.
@@ -38,22 +39,24 @@ function clientIp(req: Request): string {
 }
 
 /** Build the Stripe + admin clients from env, or null if a required secret is missing. */
-function makeClients(): { stripe: Stripe; admin: SupabaseClient } | null {
+function makeClients(): { stripe: Stripe; admin: SupabaseClient; prices: PriceMap } | null {
   const secret = Deno.env.get('STRIPE_SECRET_KEY')
   const url = Deno.env.get('SUPABASE_URL')
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
-  if (!secret || !url || !serviceKey) return null
+  const prices = priceMap()
+  if (!secret || !url || !serviceKey || !prices) return null
   const stripe = new Stripe(secret, {
     apiVersion: '2024-06-20',
     httpClient: Stripe.createFetchHttpClient(),
   })
-  return { stripe, admin: createClient(url, serviceKey) }
+  return { stripe, admin: createClient(url, serviceKey), prices }
 }
 
 /** Re-fetch the subscription from Stripe and mirror its state into our table. */
 async function syncSubscription(
   stripe: Stripe,
   admin: SupabaseClient,
+  prices: PriceMap,
   subId: string,
   fallbackUid?: string | null,
 ) {
@@ -74,7 +77,7 @@ async function syncSubscription(
     return
   }
 
-  const row = mapSubscriptionToRow(sub as unknown as StripeSubLike, uid, PRICES)
+  const row = mapSubscriptionToRow(sub as unknown as StripeSubLike, uid, prices)
   const { error } = await admin.from('subscriptions').upsert(row, { onConflict: 'user_id' })
   if (error) {
     // 23505 = the incoming stripe_customer_id / stripe_subscription_id already belongs to a DIFFERENT
@@ -119,10 +122,10 @@ Deno.serve(async (req) => {
   const clients = makeClients()
   if (!clients) {
     // Fail LOUD and clear rather than crashing at module import (which Stripe reads as a flapping 5xx).
-    console.error('[stripe-webhook] missing STRIPE_SECRET_KEY / SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY')
+    console.error('[stripe-webhook] missing Stripe/Supabase billing configuration')
     return new Response('billing is not configured', { status: 500 })
   }
-  const { stripe, admin } = clients
+  const { stripe, admin, prices } = clients
 
   const sig = req.headers.get('stripe-signature')
   const secret = Deno.env.get('STRIPE_WEBHOOK_SECRET')
@@ -143,7 +146,7 @@ Deno.serve(async (req) => {
         const s = event.data.object as Stripe.Checkout.Session
         if (s.subscription) {
           const uid = (s.client_reference_id as string) || (s.metadata?.user_id as string) || null
-          await syncSubscription(stripe, admin, s.subscription as string, uid)
+          await syncSubscription(stripe, admin, prices, s.subscription as string, uid)
         }
         break
       }
@@ -155,7 +158,7 @@ Deno.serve(async (req) => {
       case 'customer.subscription.paused':
       case 'customer.subscription.resumed': {
         const sub = event.data.object as Stripe.Subscription
-        await syncSubscription(stripe, admin, sub.id, (sub.metadata?.user_id as string) || null)
+        await syncSubscription(stripe, admin, prices, sub.id, (sub.metadata?.user_id as string) || null)
         break
       }
       case 'customer.deleted': {
@@ -177,7 +180,7 @@ Deno.serve(async (req) => {
         // Keep status / current_period_end fresh through renewals and dunning that may not also emit a
         // subscription.* event.
         const inv = event.data.object as Stripe.Invoice & { subscription?: string | null }
-        if (inv.subscription) await syncSubscription(stripe, admin, inv.subscription as string, null)
+        if (inv.subscription) await syncSubscription(stripe, admin, prices, inv.subscription as string, null)
         break
       }
       default:

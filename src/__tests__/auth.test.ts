@@ -1,8 +1,12 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { hashPassword, emailValid, passwordIssue, normalizeEmail, nameFromEmail } from '../lib/auth'
 import { useAuth } from '../store/useAuth'
+import { useStore } from '../store/useStore'
 
-beforeEach(() => useAuth.setState({ email: null, localOnly: false, pending: null }))
+beforeEach(() => {
+  useAuth.setState({ email: null, localOnly: false, pending: null })
+  useStore.getState().resetAll()
+})
 
 describe('nameFromEmail (onboarding prefill)', () => {
   it('title-cases the local part and splits on separators', () => {
@@ -54,5 +58,18 @@ describe('useAuth (Supabase-backed)', () => {
     const s = useAuth.getState() as unknown as Record<string, unknown>
     expect('continueLocal' in s).toBe(false)
     expect('enableCloud' in s).toBe(false)
+  })
+
+  it('scrubs local app data on sign-out so another account cannot inherit it', async () => {
+    useStore.setState({
+      profile: { ...useStore.getState().profile, onboarded: true, name: 'Account A' },
+      workouts: [{ id: 'w-a', title: 'Private workout' } as never],
+    })
+
+    await useAuth.getState().signOut()
+
+    expect(useStore.getState().workouts).toEqual([])
+    expect(useStore.getState().profile.onboarded).toBe(false)
+    expect(useAuth.getState()).toMatchObject({ email: null, localOnly: false, pending: null, recovering: false })
   })
 })

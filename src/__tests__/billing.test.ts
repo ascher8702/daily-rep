@@ -23,9 +23,9 @@ function row(over: Partial<SubscriptionRow>): SubscriptionRow {
 }
 
 describe('deriveEntitlement', () => {
-  it('fails OPEN when there is no row yet (provisioning gap, never lock out a new user)', () => {
+  it('fails closed when there is no row yet (access cannot be proven)', () => {
     const e = deriveEntitlement(null, NOW)
-    expect(e.entitled).toBe(true)
+    expect(e.entitled).toBe(false)
     expect(e.inTrial).toBe(false)
     expect(e.hasSubscription).toBe(false)
   })

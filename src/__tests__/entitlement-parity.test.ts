@@ -53,7 +53,7 @@ describe('entitlement parity (deriveEntitlement ↔ is_active_subscriber SQL)', 
     expect(deriveEntitlement(row, NOW).entitled).toBe(expected)
   })
 
-  it('fails OPEN for a missing row (matches the SQL provisioning-gap branch)', () => {
-    expect(deriveEntitlement(null, NOW).entitled).toBe(true)
+  it('fails closed for a missing row (matches the SQL proof-required branch)', () => {
+    expect(deriveEntitlement(null, NOW).entitled).toBe(false)
   })
 })

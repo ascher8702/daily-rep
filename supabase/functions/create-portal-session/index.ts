@@ -15,7 +15,7 @@ const cors = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
 
-const PORTAL_CONFIG = Deno.env.get('STRIPE_PORTAL_CONFIG') ?? 'bpc_1Tn00rLy7BVo8A05wyjktR9Z'
+const PORTAL_CONFIG = Deno.env.get('STRIPE_PORTAL_CONFIG') || undefined
 
 // Per-instance fixed-window limiter (one Map per cold start; see spec §11 on warm-instance scope).
 const rateStore = new InMemoryRateLimitStore()
@@ -65,13 +65,13 @@ Deno.serve(async (req) => {
       httpClient: Stripe.createFetchHttpClient(),
     })
 
-    const origin = req.headers.get('origin')
-    const appUrl = Deno.env.get('APP_URL') || origin || 'http://localhost:3000'
+    const appUrl = Deno.env.get('APP_URL')
+    if (!appUrl || !PORTAL_CONFIG) return json({ error: 'billing is not configured' }, 500)
 
     const portal = await stripe.billingPortal.sessions.create({
       customer: customerId,
       return_url: `${appUrl}/settings`,
-      ...(PORTAL_CONFIG ? { configuration: PORTAL_CONFIG } : {}),
+      configuration: PORTAL_CONFIG,
     })
 
     return json({ url: portal.url })

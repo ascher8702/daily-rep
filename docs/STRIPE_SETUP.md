@@ -61,18 +61,18 @@ trigger (`security definer`) are the only writers.
 
 | Resource | ID |
 | --- | --- |
-| Product | `prod_UmZ9AwcvkeViNw` ("Daily Rep Pro") |
-| Price — monthly $7.99 | `price_1Tn00qLy7BVo8A05C1HnWdV9` |
-| Price — annual $59.99 | `price_1Tn00rLy7BVo8A05K0rqNBRt` |
-| Billing portal config | `bpc_1Tn00rLy7BVo8A05wyjktR9Z` (default) |
+| Product | Daily Rep Pro product in the target Stripe account |
+| Price — monthly $7.99 | `price_...` from the target Stripe account |
+| Price — annual $59.99 | `price_...` from the target Stripe account |
+| Billing portal config | `bpc_...` from the target Stripe account |
 | Webhook endpoint | `we_1Tn0H8Ly7BVo8A05Z7aDNPR5` → `https://clobxwwcjlmyckvkongk.supabase.co/functions/v1/stripe-webhook` |
 | Webhook signing secret | `whsec_REDACTED_SET_IN_SUPABASE_SECRETS` (must match `STRIPE_WEBHOOK_SECRET` on the project) |
 
 DB migration `subscriptions_table_and_trial` and Edge Functions `create-checkout-session`,
 `create-portal-session`, `set-auto-renew`, `stripe-webhook`, and the updated `delete-account` are deployed.
 
-The test price / portal IDs are baked into the functions as defaults (they are **not** secrets), so the
-only thing left is to set the two real secrets below.
+Price, portal, webhook, and app URL values are all required Edge Function secrets. The functions do not
+carry test-mode defaults.
 
 ---
 
@@ -88,6 +88,10 @@ startup) and checkout returns an error.
 | --- | --- |
 | `STRIPE_SECRET_KEY` | your Stripe **test** secret key (`sk_test_…`) |
 | `STRIPE_WEBHOOK_SECRET` | `whsec_REDACTED_SET_IN_SUPABASE_SECRETS` |
+| `STRIPE_PRICE_MONTHLY` | monthly recurring price id (`price_…`) |
+| `STRIPE_PRICE_ANNUAL` | annual recurring price id (`price_…`) |
+| `STRIPE_PORTAL_CONFIG` | billing portal configuration id (`bpc_…`) |
+| `APP_URL` | trusted app URL, e.g. `https://daily-rep.app` or local tunnel URL |
 
 **Or via CLI:**
 
@@ -95,12 +99,15 @@ startup) and checkout returns an error.
 supabase secrets set \
   STRIPE_SECRET_KEY=sk_test_xxx \
   STRIPE_WEBHOOK_SECRET=whsec_REDACTED_SET_IN_SUPABASE_SECRETS \
+  STRIPE_PRICE_MONTHLY=price_test_monthly \
+  STRIPE_PRICE_ANNUAL=price_test_annual \
+  STRIPE_PORTAL_CONFIG=bpc_test_xxx \
+  APP_URL=http://localhost:3000 \
   --project-ref clobxwwcjlmyckvkongk
 ```
 
 Supabase auto-injects `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` — don't set
-those. `APP_URL` is optional (checkout return URLs fall back to the request Origin, so local dev works
-without it); set it to `https://daily-rep.app` in production for robust return URLs.
+those. `APP_URL` is required and is the only trusted checkout/portal return base.
 
 > Security note: the test secret key was shared in chat **and** the test webhook signing secret was
 > previously committed to this file. Both are test-mode, but treat them as compromised: **roll the secret
@@ -133,8 +140,7 @@ Other useful test cards: `4000 0025 0000 3155` (requires authentication), `4000 
    and a Billing Portal configuration (cancel + switch between the two prices).
 2. Create a **live** webhook endpoint pointing at the same function URL, subscribed to
    `checkout.session.completed`, `customer.subscription.created|updated|deleted`. Copy its `whsec_…`.
-3. Set the Edge Function secrets to the **live** values, and override the price/portal IDs if they
-   differ from the test defaults:
+3. Set the Edge Function secrets to the **live** values:
    ```bash
    supabase secrets set \
      STRIPE_SECRET_KEY=sk_live_xxx \

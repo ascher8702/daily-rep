@@ -32,8 +32,8 @@ How an operator ships Daily Rep to production. The app has two deployable surfac
 **Supabase project:**
 - Edge Function secrets (Dashboard → Project Settings → Edge Functions → Secrets, or `supabase secrets set`):
   `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` (live values — see `docs/STRIPE_SETUP.md`),
-  `RECONCILE_SECRET` (a random string shared with the reconciliation cron — see below), and optional
-  `APP_URL`, `STRIPE_PRICE_*`, `STRIPE_PORTAL_CONFIG`.
+  `STRIPE_PRICE_MONTHLY`, `STRIPE_PRICE_ANNUAL`, `STRIPE_PORTAL_CONFIG`, `APP_URL`, and
+  `RECONCILE_SECRET` (a random string shared with the reconciliation cron — see below).
 - Reconciliation cron (missed-webhook safety net): after deploying `reconcile-subscriptions`, store its
   URL + `RECONCILE_SECRET` in Vault so migration `20260626160000` can schedule it (see that migration's
   header for the exact `vault.create_secret` calls).
@@ -56,13 +56,13 @@ pnpm lint
 pnpm typecheck
 pnpm test
 pnpm check:legal          # BLOCKING for production: legal placeholders must be filled by counsel
+pnpm check:prod           # BLOCKING for production: static release-regression guards
 NEXT_PUBLIC_SUPABASE_URL=… NEXT_PUBLIC_SUPABASE_ANON_KEY=… pnpm build
 ```
 
-`check:legal` is advisory in the per-PR CI (so it doesn't red-wall unrelated work) but is enforced
-**mechanically at deploy**: `vercel.json` runs `pnpm check:legal && pnpm build`, so a Vercel build
-(preview or production) **fails** while any placeholder remains (`[Legal Entity]` / `[Jurisdiction]` /
-age placeholders, including multi-line ones, in Privacy & Terms). Do not bypass it.
+`check:legal` and `check:prod` are hard gates in CI and at deploy: `vercel.json` runs
+`pnpm check:legal && pnpm check:prod && pnpm build`, so a Vercel build fails while legal placeholders
+remain or a release-blocking production guard regresses. Do not bypass them.
 
 ---
 
