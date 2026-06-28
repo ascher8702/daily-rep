@@ -52,20 +52,21 @@ trigger (`security definer`) are the only writers.
 
 ---
 
-## What's already provisioned (TEST mode — Stripe account `acct_1TlyIs…`)
+## What's already provisioned (TEST mode — Stripe account `acct_1TlyIs…`, Supabase project `clobxwwcjlmyckvkongk`)
 
-> The account in use is `acct_1TlyIs…` (the one the Stripe dashboard / MCP is logged into). An earlier
-> set of objects was created in a *different* account (`acct_1TlyIy…`) from keys provided by mistake and
-> is now orphaned/unused — ignore it.
+> Billing runs on the **dedicated** Supabase project `clobxwwcjlmyckvkongk` (the app's current
+> `NEXT_PUBLIC_SUPABASE_URL`). The earlier shared project `aswwhsxubqyzbrfoptoq` and an unrelated Stripe
+> account `acct_1TlyIy…` are both orphaned/unused — ignore them. (Stripe objects were re-created after a
+> "delete test data" wipe of the sandbox, hence the IDs below.)
 
 | Resource | ID |
 | --- | --- |
-| Product | `prod_UltxFPF9CUH7wU` ("Daily Rep Pro") |
-| Price — monthly $7.99 | `price_1TmM9lLy7BVo8A05IudiSYkf` |
-| Price — annual $59.99 | `price_1TmM9lLy7BVo8A056dF3HnGw` |
-| Billing portal config | `bpc_1TmMALLy7BVo8A05wOjpz8I1` (default) |
-| Webhook endpoint | `https://aswwhsxubqyzbrfoptoq.supabase.co/functions/v1/stripe-webhook` |
-| Webhook signing secret | `whsec_REDACTED_SET_IN_SUPABASE_SECRETS` |
+| Product | `prod_UmZ9AwcvkeViNw` ("Daily Rep Pro") |
+| Price — monthly $7.99 | `price_1Tn00qLy7BVo8A05C1HnWdV9` |
+| Price — annual $59.99 | `price_1Tn00rLy7BVo8A05K0rqNBRt` |
+| Billing portal config | `bpc_1Tn00rLy7BVo8A05wyjktR9Z` (default) |
+| Webhook endpoint | `we_1Tn0H8Ly7BVo8A05Z7aDNPR5` → `https://clobxwwcjlmyckvkongk.supabase.co/functions/v1/stripe-webhook` |
+| Webhook signing secret | `whsec_REDACTED_SET_IN_SUPABASE_SECRETS` (must match `STRIPE_WEBHOOK_SECRET` on the project) |
 
 DB migration `subscriptions_table_and_trial` and Edge Functions `create-checkout-session`,
 `create-portal-session`, `set-auto-renew`, `stripe-webhook`, and the updated `delete-account` are deployed.
@@ -94,7 +95,7 @@ startup) and checkout returns an error.
 supabase secrets set \
   STRIPE_SECRET_KEY=sk_test_xxx \
   STRIPE_WEBHOOK_SECRET=whsec_REDACTED_SET_IN_SUPABASE_SECRETS \
-  --project-ref aswwhsxubqyzbrfoptoq
+  --project-ref clobxwwcjlmyckvkongk
 ```
 
 Supabase auto-injects `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` — don't set

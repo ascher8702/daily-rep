@@ -13,8 +13,8 @@ import { mapSubscriptionToRow, type PriceMap, type StripeSubLike } from '../_sha
  */
 
 const PRICES: PriceMap = {
-  monthly: Deno.env.get('STRIPE_PRICE_MONTHLY') ?? 'price_1TmM9lLy7BVo8A05IudiSYkf',
-  annual: Deno.env.get('STRIPE_PRICE_ANNUAL') ?? 'price_1TmM9lLy7BVo8A056dF3HnGw',
+  monthly: Deno.env.get('STRIPE_PRICE_MONTHLY') ?? 'price_1Tn00qLy7BVo8A05C1HnWdV9',
+  annual: Deno.env.get('STRIPE_PRICE_ANNUAL') ?? 'price_1Tn00rLy7BVo8A05K0rqNBRt',
 }
 
 // Signature verification needs the WebCrypto-backed provider in Deno; it carries no secret.

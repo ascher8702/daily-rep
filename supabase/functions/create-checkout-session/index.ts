@@ -18,8 +18,8 @@ const cors = {
 
 // Test-mode price IDs are NOT secret — baked in as defaults, overridable via env for live mode.
 const PRICES: Record<string, string> = {
-  monthly: Deno.env.get('STRIPE_PRICE_MONTHLY') ?? 'price_1TmM9lLy7BVo8A05IudiSYkf',
-  annual: Deno.env.get('STRIPE_PRICE_ANNUAL') ?? 'price_1TmM9lLy7BVo8A056dF3HnGw',
+  monthly: Deno.env.get('STRIPE_PRICE_MONTHLY') ?? 'price_1Tn00qLy7BVo8A05C1HnWdV9',
+  annual: Deno.env.get('STRIPE_PRICE_ANNUAL') ?? 'price_1Tn00rLy7BVo8A05K0rqNBRt',
 }
 
 const DAY_MS = 86_400_000

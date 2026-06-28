@@ -14,7 +14,7 @@ const cors = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
 
-const PORTAL_CONFIG = Deno.env.get('STRIPE_PORTAL_CONFIG') ?? 'bpc_1TmMALLy7BVo8A05wOjpz8I1'
+const PORTAL_CONFIG = Deno.env.get('STRIPE_PORTAL_CONFIG') ?? 'bpc_1Tn00rLy7BVo8A05wyjktR9Z'
 
 Deno.serve(async (req) => {
   const json = (body: unknown, status = 200) =>
