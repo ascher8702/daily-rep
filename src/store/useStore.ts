@@ -62,6 +62,11 @@ export interface AppState {
    *  doesn't resurrect them. Unioned across devices; an id present here is subtracted from the merged
    *  set. Persisted + synced (see partializeState). */
   deletedWorkoutIds: string[]
+  /** ids of custom plans the user deleted — a RESERVED tombstone field (shape-only for now). Persisted
+   *  + synced so adding cross-device customPlans-delete semantics later isn't a hard migration over
+   *  presence/absence history. Deliberately NOT yet unioned across devices or subtracted from
+   *  customPlans (the asymmetry vs deletedWorkoutIds is intentional — see mergePersisted). */
+  deletedPlanIds: string[]
   current: Workout | null // the planned / active session
   restEndsAt: number | null // epoch ms for the running rest timer
   restDuration: number // seconds the current rest was set to
@@ -747,11 +752,60 @@ function sanitizeWorkouts(x: unknown): Workout[] {
 }
 
 /**
+ * The schema version stamped INSIDE the persisted/synced blob (a discriminator that survives the cloud
+ * round-trip, unlike the Zustand persist envelope `version` which is stripped before sync). Bump this
+ * when the blob SHAPE changes and add a `migratePersisted` case + a `readSchemaVersion`-driven branch in
+ * `mergePersisted`. The single source of truth for the current blob shape.
+ */
+export const BLOB_SCHEMA_VERSION = 1 as const
+
+/**
+ * Read the schema discriminator off an incoming persisted/cloud blob. A MISSING / non-number /
+ * non-finite value is a pre-versioning (legacy) blob → treat as v1 so old blobs are recoverable rather
+ * than silently mishandled. Pure + exported for tests.
+ */
+export function readSchemaVersion(p: unknown): number {
+  const v = (p as { schemaVersion?: unknown } | null | undefined)?.schemaVersion
+  return typeof v === 'number' && Number.isFinite(v) ? v : 1
+}
+
+/**
+ * The real `migrate` switch skeleton, replacing the old `migrate: (persisted) => persisted as AppState`
+ * passthrough cast. v1 = identity (the point is the seam exists for the first real shape change). The
+ * `default` is identity passthrough too — on an UNRECOGNIZED version we keep the data and let
+ * `mergePersisted` harden it; a wholesale reset/drop would be the silent-data-loss footgun this seam is
+ * meant to prevent. Pure + exported for tests.
+ */
+export function migratePersisted(persisted: unknown, version: number): unknown {
+  switch (version) {
+    case 1:
+      return persisted // current shape; mergePersisted then defensively coerces it
+    default:
+      // unknown / older / newer version → pass through untouched; mergePersisted hardens it. NEVER drop
+      // data here — that would be the silent-data-loss footgun this seam is meant to prevent.
+      return persisted
+  }
+}
+
+/**
  * Defensively merge persisted state over defaults so a corrupt/older/partial blob can't
  * hydrate with the wrong shapes and crash the app. Exported for regression testing.
  */
 export function mergePersisted(persisted: unknown, current: AppState): AppState {
-  const p = (persisted ?? {}) as Partial<AppState>
+  // Read the in-blob schema discriminator (missing/legacy → v1). At v1 (and any unrecognized version)
+  // the merge below is byte-identical to today; this read + the migratePersisted switch establish the
+  // seam so the first future blob-shape change has a real transform branch instead of a silent cast.
+  // Switching on `version` here is the future extension point; at v1 there is nothing to branch.
+  switch (readSchemaVersion(persisted)) {
+    default:
+      break // v1 / unknown → fall through to the (version-agnostic) defensive merge
+  }
+  // Strip the discriminator off the blob before the `...p` spread — it's blob-only metadata re-derived
+  // by partializeState on the next persist, so it must NOT leak onto the in-memory AppState. (At v1 the
+  // version is inert; this keeps the merged shape identical to a blob that never carried the field.)
+  const { schemaVersion: _schemaVersion, ...rest } =
+    (persisted ?? {}) as Partial<AppState> & { schemaVersion?: unknown }
+  const p = rest as Partial<AppState>
   const profile = (p.profile ?? {}) as Partial<Profile>
   // hydrate custom plans first so the active plan can be validated against them below
   const customPlans: WorkoutPlan[] = Array.isArray(p.customPlans)
@@ -798,6 +852,11 @@ export function mergePersisted(persisted: unknown, current: AppState): AppState 
   // AND is stored on the merged state (so it's remembered for the next merge). Both sides' tombstones
   // converge across devices; a missing/garbage blob value reads as [].
   const deletedWorkoutIds = unionIds(asStringArray(p.deletedWorkoutIds), current.deletedWorkoutIds)
+  // RESERVE-ONLY tombstone: sanitize the blob side (garbage/non-array/mixed → clean string[], missing →
+  // []) but deliberately do NOT union it with current.deletedPlanIds and do NOT subtract it from
+  // customPlans. This asymmetry vs deletedWorkoutIds (above) is intentional — customPlans-delete
+  // convergence is deferred, so this field is shape-only for now. Do not "fix" it into a union.
+  const deletedPlanIds = asStringArray(p.deletedPlanIds)
   return {
     ...current,
     ...p,
@@ -812,6 +871,8 @@ export function mergePersisted(persisted: unknown, current: AppState): AppState 
       deletedWorkoutIds,
     ),
     deletedWorkoutIds,
+    // sanitized blob side only (reserve-only — see the deletedPlanIds comment above; NOT unioned)
+    deletedPlanIds,
     // repair the session (keep it as long as ≥1 exercise survives) rather than nulling the whole
     // thing on a single malformed block, but still require the top-level shape the screens read
     // (.focus / .title / .status) so a corrupt current can't crash them.
@@ -871,10 +932,15 @@ export function mergePersisted(persisted: unknown, current: AppState): AppState 
  */
 export function partializeState(s: AppState) {
   return {
+    // in-blob schema discriminator — survives the cloud round-trip (the persist envelope `version` is
+    // stripped before sync), so a future blob-shape change has a transform seam instead of a silent cast
+    schemaVersion: BLOB_SCHEMA_VERSION,
     profile: s.profile,
     workouts: s.workouts,
     // the delete tombstone — synced so a delete on one device converges across all of them
     deletedWorkoutIds: s.deletedWorkoutIds,
+    // reserved customPlans-delete tombstone (shape-only for now — see AppState.deletedPlanIds)
+    deletedPlanIds: s.deletedPlanIds,
     current: s.current,
     activePlan: s.activePlan,
     customPlans: s.customPlans,
@@ -893,6 +959,7 @@ export const useStore = create<AppState>()(
       profile: DEFAULT_PROFILE,
       workouts: [],
       deletedWorkoutIds: [],
+      deletedPlanIds: [],
       current: null,
       avoidNoticeDismissedId: null,
       restEndsAt: null,
@@ -1377,6 +1444,10 @@ export const useStore = create<AppState>()(
           const { [id]: _removedEdits, ...restEdits } = s.planDayEdits ?? {}
           return {
           customPlans: s.customPlans.filter((p) => p.id !== id),
+          // record the deleted id in the reserved tombstone (de-duped), forward-consistent with
+          // deleteWorkout — so when customPlans-delete union semantics land later, historical deletes
+          // are already recorded. Recording is unconditional (a ghost id is a harmless tombstone).
+          deletedPlanIds: s.deletedPlanIds.includes(id) ? s.deletedPlanIds : [...s.deletedPlanIds, id],
           // if the deleted plan was the one being followed, stop following it
           activePlan: s.activePlan?.planId === id ? null : s.activePlan,
           planOverrides: restOverrides, // drop the deleted plan's swap overrides
@@ -1787,7 +1858,7 @@ export const useStore = create<AppState>()(
         const { profile } = get()
         const sample = buildSampleHistory(profile, Date.now())
         // sample data is a clean demo slate — clear any in-progress session, plan, and delete tombstones
-        set({ workouts: sample, deletedWorkoutIds: [], current: null, restEndsAt: null, restDuration: 0, activePlan: null, planProgress: {}, planOverrides: {}, planDayEdits: {} })
+        set({ workouts: sample, deletedWorkoutIds: [], deletedPlanIds: [], current: null, restEndsAt: null, restDuration: 0, activePlan: null, planProgress: {}, planOverrides: {}, planDayEdits: {} })
         emitToast(`Loaded ${sample.length} sample workouts`)
       },
 
@@ -1796,6 +1867,7 @@ export const useStore = create<AppState>()(
           profile: DEFAULT_PROFILE,
           workouts: [],
           deletedWorkoutIds: [],
+          deletedPlanIds: [],
           current: null,
           restEndsAt: null,
           restDuration: 0,
@@ -1809,9 +1881,11 @@ export const useStore = create<AppState>()(
     {
       name: 'daily-rep-v1',
       version: 1,
-      // Passthrough migration so a future version bump can't silently discard user data;
-      // merge() then defensively coerces whatever shape comes through.
-      migrate: (persisted) => persisted as AppState,
+      // Real version-switch migration (v1 = identity, default = identity passthrough — NEVER a reset)
+      // so a future envelope-version bump has a transform seam and can't silently discard user data;
+      // merge() then defensively coerces whatever shape comes through. Zustand passes the localStorage
+      // envelope `version` here (the in-blob `schemaVersion` is the separate cloud-round-trip seam).
+      migrate: (persisted, version) => migratePersisted(persisted, version) as AppState,
       // IndexedDB-backed storage (via the idbStorage adapter) so history can grow past localStorage's
       // ~5MB cap. It's SSR-safe (no `indexedDB` → falls back) and degrades to localStorage/in-memory.
       storage: createJSONStorage(() => idbStorage),

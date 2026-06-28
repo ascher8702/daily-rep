@@ -24,6 +24,24 @@ let pulling = false // in-flight guard so rapid focus/visibility events don't st
 let lastPushAt = 0 // wall-clock ms of the last SUCCESSFUL push (0 = nothing synced yet this session)
 let pushRetry: ReturnType<typeof setTimeout> | null = null // pending backoff retry timer
 
+// DEFAULT read-WRITE: today's behavior is byte-identical (the gate is a no-op `if (false) return`). The
+// future web-analytics-dashboard build calls setSyncReadOnly(true) at startup so it NEVER writes the
+// user's blob (it only reads / adopts). No in-app caller yet.
+let syncReadOnly = false
+
+/** Enable/disable read-only sync. When ON, the sync layer NEVER calls the DB upsert (pushNow) — neither
+ *  the debounced local-change push NOR the focus/visibility else-branch push in pullAndReconcile, the
+ *  stopSync flush, or the retry. Pull / adopt is unaffected. Default OFF (read-write). Exported for the
+ *  future dashboard build + unit tests. */
+export function setSyncReadOnly(value: boolean): void {
+  syncReadOnly = value
+}
+
+/** Whether sync is currently read-only (no writes). Exported for tests / a future status indicator. */
+export function isSyncReadOnly(): boolean {
+  return syncReadOnly
+}
+
 const MAX_PUSH_RETRIES = 4 // attempts = 1 initial + 4 retries
 const PUSH_BACKOFF_BASE_MS = 1000
 
@@ -153,41 +171,114 @@ export function isTerminalPushError(error: { code?: string } | null | undefined)
   return error?.code === '42501'
 }
 
-async function pushNow(attempt = 0): Promise<void> {
-  if (!supabase || !userId) return
-  const data = persistedState()
-  if (!data) return
-  const json = JSON.stringify(data)
-  if (json === lastPushedJson) return // nothing changed since the last push (or a newer push already won)
-  const { error } = await supabase.from(STATE_TABLE).upsert(
+/** UTF-8 byte length of a string (NOT String.length, so a multi-byte note/name isn't undercounted —
+ *  the whole point of the size metric is an accurate p95 payload BYTES figure). Pure + exported. */
+export function byteLength(s: string): number {
+  return typeof TextEncoder !== 'undefined'
+    ? new TextEncoder().encode(s).length
+    : Buffer.byteLength(s, 'utf8')
+}
+
+/** Number of completed workouts carried by a blob — `0` when the field is absent or not an array (no
+ *  throw). Pure + exported. */
+export function workoutCount(data: Json): number {
+  const w = (data as { workouts?: unknown } | null)?.workouts
+  return Array.isArray(w) ? w.length : 0
+}
+
+/** The push attempt's outcome, so the caller (`pushNow`) can drive the retry/terminal handling without
+ *  the inner helper needing to know about timers. */
+export interface PushResult {
+  ok: boolean
+  skipped?: boolean // the blob was identical to the last successful push → upsert deliberately skipped
+  error?: { code?: string; message?: string }
+}
+
+/**
+ * The minimal supabase surface `runPush` uses — just `from(table).upsert(row, opts)` resolving to an
+ * `{ error }` result. Typed structurally (not `Pick<SupabaseClient<Database>, 'from'>`) so the real
+ * client AND a hand-rolled FAKE (the repo's no-supabase-mock test convention) both satisfy it without
+ * the full PostgrestQueryBuilder surface. The real `supabase.from(...).upsert(...)` is a thenable that
+ * resolves to a superset of `{ error }`, so it's assignable here.
+ */
+export interface PushClient {
+  from(table: string): {
+    upsert(
+      row: { user_id: string; data: Json; client_updated_at: string },
+      opts: { onConflict: string },
+    ): PromiseLike<{ error: { code?: string; message?: string } | null }>
+  }
+}
+
+/**
+ * The injectable push body: read-only gate → unchanged-skip → upsert → success bookkeeping + telemetry.
+ * Extracted from `pushNow` so the read-only suppression and the `sync.push` telemetry are unit-testable
+ * with a FAKE supabase client (the repo's no-supabase-mock convention) — `pushNow` calls it with the
+ * real `supabase` singleton + module clock. Side effects (lastPushedJson / lastPushAt) are shared module
+ * state so the unchanged-skip and the "synced Xm ago" clock work the same on both paths. Exported for tests.
+ */
+export async function runPush(
+  client: PushClient,
+  uid: string,
+  blob: Json,
+  clockMs: number,
+  opts: { readOnly?: boolean } = {},
+): Promise<PushResult> {
+  // Read-only mode: NEVER write. Returns before persistedState/JSON-compare/upsert, so it covers EVERY
+  // pushNow caller (debounced push, the pullAndReconcile focus else-branch, the stopSync flush, the retry).
+  if (opts.readOnly) return { ok: true, skipped: true }
+  const json = JSON.stringify(blob)
+  if (json === lastPushedJson) return { ok: true, skipped: true } // nothing changed since the last push
+  const t0 = Date.now()
+  const { error } = await client.from(STATE_TABLE).upsert(
     {
-      user_id: userId,
-      data,
-      client_updated_at: new Date(clientUpdatedAt || Date.now()).toISOString(),
+      user_id: uid,
+      data: blob,
+      client_updated_at: new Date(clockMs).toISOString(),
     },
     { onConflict: 'user_id' },
   )
   if (!error) {
     lastPushedJson = json
     lastPushAt = Date.now()
-    return
+    // The size/latency sensor: emit ONLY on a real, successful, non-skipped write so the deferred
+    // "normalize at p95 >256KB / >1s" decision becomes an observed trigger rather than a guess.
+    reportEvent('sync.push', {
+      bytes: byteLength(json),
+      workouts: workoutCount(blob),
+      ms: lastPushAt - t0,
+    })
+    return { ok: true }
   }
   // A row-level-security denial (Postgres 42501) is a PERMANENT, expected outcome — e.g. a lapsed /
-  // un-entitled user blocked by the server-side entitlement gate (is_active_subscriber). Retrying it
-  // would just storm the backoff, and reporting it as an error would spam telemetry with an expected
-  // state. Treat it as terminal: record a low-severity event and stop (no retry, no reportError). The
-  // client paywall already tells the user; their local data is intact and re-syncs if they re-subscribe.
+  // un-entitled user blocked by the server-side entitlement gate (is_active_subscriber). Treat it as
+  // terminal: record a low-severity event and stop (no retry, no reportError, no sync.push success).
   if (isTerminalPushError(error)) {
     reportEvent('sync.push.denied', { code: error.code })
-    return
+    return { ok: false, error }
   }
+  return { ok: false, error }
+}
+
+async function pushNow(attempt = 0): Promise<void> {
+  if (!supabase || !userId) return
+  const data = persistedState()
+  if (!data) return
+  const res = await runPush(supabase, userId, data, clientUpdatedAt || Date.now(), {
+    readOnly: syncReadOnly,
+  })
+  if (res.ok || res.skipped || !res.error) return
+  // A terminal 42501 denial already emitted sync.push.denied inside runPush — nothing more to do.
+  if (isTerminalPushError(res.error)) return
   // Otherwise a push can fail transiently (offline / timeout) or hard (quota). Surface it instead of
   // silently swallowing it, then retry with bounded exponential backoff. The strictly-increasing client
   // clock (nextClock) means a later retry still wins, and the lastPushedJson guard means a retry
   // self-cancels once any newer push has already succeeded — so a stale retry can't clobber fresher data.
-  console.warn(`[sync] push failed (attempt ${attempt + 1}/${MAX_PUSH_RETRIES + 1}): ${error.message}`)
+  console.warn(
+    `[sync] push failed (attempt ${attempt + 1}/${MAX_PUSH_RETRIES + 1}): ${res.error.message}`,
+  )
   if (attempt >= MAX_PUSH_RETRIES) {
-    reportError(error, { scope: 'sync.push', attempts: attempt + 1 }) // retries exhausted → report
+    reportError(res.error, { scope: 'sync.push', attempts: attempt + 1 }) // retries exhausted → report
     return
   }
   if (pushRetry) clearTimeout(pushRetry)
