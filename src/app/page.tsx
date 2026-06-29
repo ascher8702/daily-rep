@@ -349,7 +349,7 @@ export default function HomeScreen() {
             description={current.exercises.length === 0 ? 'No exercises yet — add some to get started.' : undefined}
             cta={
               current.exercises.length === 0
-                ? { label: 'Add exercises', onClick: () => router.push('/session'), icon: <PlusIcon size={18} /> }
+                ? { label: 'Add exercises', onClick: () => router.push('/session'), icon: <PlusIcon size={18} strokeWidth={3} /> }
                 : {
                     label: current.status === 'active' ? 'Continue' : 'Start',
                     onClick: openCurrent,
@@ -401,7 +401,7 @@ export default function HomeScreen() {
             cta={
               planPreview.length > 0
                 ? { label: 'Start', onClick: startPlanWorkout, icon: <PlayIcon size={18} /> }
-                : { label: 'Build a free workout', onClick: () => buildAndGo(), icon: <PlusIcon size={18} /> }
+                : { label: 'Build a free workout', onClick: () => buildAndGo(), icon: <PlusIcon size={18} strokeWidth={3} /> }
             }
             footer={
               <button
@@ -421,7 +421,7 @@ export default function HomeScreen() {
             onSwitch={() => setSwitchOpen(true)}
             switchLabel="Options"
             description="We'll build a fresh session around how recovered each muscle is — targeting what's ready and resting what isn't."
-            cta={{ label: "Build today's workout", onClick: () => buildAndGo(), icon: <PlusIcon size={18} /> }}
+            cta={{ label: "Build today's workout", onClick: () => buildAndGo(), icon: <PlusIcon size={18} strokeWidth={3} /> }}
           />
         )}
 
