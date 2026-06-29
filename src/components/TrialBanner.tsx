@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useEntitlement } from '@/store/useEntitlement'
 import { FlameIcon, ChevronRight, XIcon } from '@/components/icons'
+import { Button } from '@/components/ui/Button'
 import {
   readTrialBannerDismissal,
   shouldShowTrialBanner,
@@ -47,33 +48,30 @@ export default function TrialBanner() {
   }
 
   return (
-    <div className="relative w-full rounded-2xl border border-blaze/30 bg-blaze/10">
-      {/* Tap anywhere on the card (except the X) → subscribe. */}
-      <button
-        onClick={() => router.push('/subscribe')}
-        className="block w-full text-left px-4 py-3 active:scale-[0.99] transition"
-      >
-        <div className="flex items-start gap-3 pr-8">
-          <span className="grid place-items-center h-9 w-9 rounded-full bg-blaze/15 text-blaze-label shrink-0">
-            <FlameIcon size={18} />
-          </span>
-          <div className="min-w-0">
-            <div className="text-sm font-semibold">{headline}</div>
-            <div className="text-xs text-fg/50">Subscribe to keep your training after the trial.</div>
-          </div>
+    <div className="relative w-full rounded-2xl border border-blaze/30 bg-blaze/10 px-4 py-3.5">
+      {/* Icon + copy. `pr-9` keeps the headline clear of the corner dismiss button. */}
+      <div className="flex items-start gap-3 pr-9">
+        <span className="grid place-items-center h-9 w-9 rounded-full bg-blaze/15 text-blaze-label shrink-0">
+          <FlameIcon size={18} />
+        </span>
+        <div className="min-w-0">
+          <div className="text-sm font-semibold leading-snug">{headline}</div>
+          <div className="mt-0.5 text-xs text-fg/50">Keep your full training access after the trial ends.</div>
         </div>
-        {/* Subscribe CTA — bottom-right */}
-        <div className="mt-2 flex justify-end">
-          <span className="inline-flex items-center gap-0.5 text-xs font-bold text-blaze-label">
-            Subscribe <ChevronRight size={14} />
-          </span>
-        </div>
-      </button>
-      {/* Dismiss — absolute top-right corner (rendered after the card button so it sits on top / is clickable). */}
+      </div>
+
+      {/* Subscribe — primary CTA, bottom-right. */}
+      <div className="mt-3 flex justify-end">
+        <Button variant="primary" size="sm" onClick={() => router.push('/subscribe')} className="gap-1">
+          Subscribe <ChevronRight size={14} />
+        </Button>
+      </div>
+
+      {/* Dismiss — absolute top-right corner. */}
       <button
         onClick={dismiss}
         aria-label="Dismiss trial reminder"
-        className="absolute top-1.5 right-1.5 z-10 grid place-items-center h-9 w-9 rounded-full text-fg/45 active:text-fg/75 transition"
+        className="absolute top-1 right-1 z-10 grid place-items-center h-10 w-10 rounded-full text-fg/45 active:text-fg/75 transition"
       >
         <XIcon size={16} />
       </button>
