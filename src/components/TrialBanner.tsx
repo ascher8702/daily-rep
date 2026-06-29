@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useEntitlement } from '@/store/useEntitlement'
-import { FlameIcon, ChevronRight, XIcon } from '@/components/icons'
+import { FlameIcon, XIcon } from '@/components/icons'
 import { Button } from '@/components/ui/Button'
 import {
   readTrialBannerDismissal,
@@ -60,12 +60,16 @@ export default function TrialBanner() {
         </div>
       </div>
 
-      {/* Subscribe — primary CTA, bottom-right. */}
-      <div className="mt-3 flex justify-end">
-        <Button variant="primary" size="sm" onClick={() => router.push('/subscribe')} className="gap-1">
-          Subscribe <ChevronRight size={14} />
-        </Button>
-      </div>
+      {/* Subscribe — primary CTA, full-width along the bottom. */}
+      <Button
+        variant="primary"
+        size="sm"
+        fullWidth
+        onClick={() => router.push('/subscribe')}
+        className="mt-3"
+      >
+        Subscribe
+      </Button>
 
       {/* Dismiss — absolute top-right corner. */}
       <button
