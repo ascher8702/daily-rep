@@ -39,6 +39,10 @@ export interface AuthBootstrapPatch {
 export interface AuthBootstrapDeps {
   startSync: (uid: string) => unknown
   stopSync: () => unknown
+  /** Scrub all device-local app state before adopting a DIFFERENT account (account switch without an
+   *  explicit in-app sign-out, e.g. a magic-link/OAuth landing as user B over user A's data). Optional
+   *  so existing tests that don't exercise the switch path stay valid. */
+  clearLocalAppData?: () => unknown
   /** ms before we stop waiting on getSession and proceed as signed-out (default 8000). */
   timeoutMs?: number
 }
@@ -48,10 +52,24 @@ export function runAuthBootstrap(
   set: (patch: AuthBootstrapPatch) => void,
   deps: AuthBootstrapDeps,
 ): void {
-  const { startSync, stopSync, timeoutMs = 8000 } = deps
+  const { startSync, stopSync, clearLocalAppData, timeoutMs = 8000 } = deps
 
   // Flips true on the first auth-state-change event; from then on, getSession results are stale.
   let authoritative = false
+  // The uid we last started sync for. When an incoming session adopts a DIFFERENT uid without an
+  // explicit in-app sign-out (which scrubs + nulls this), the prior account's local blob is still on
+  // device — scrub it BEFORE startSync so the new account can't pull the cloud row in over stale data.
+  let lastSyncedUid: string | null = null
+
+  async function adopt(uid: string): Promise<void> {
+    // AWAIT the scrub before startSync: clearLocalAppData resets the sync clock (clientUpdatedAt=0,
+    // lastPushedJson='') only AFTER its awaited IDB/localStorage clears. If startSync(B) raced ahead and
+    // stamped the clock first, that late reset would land after it and B's first post-switch edit would
+    // push at client_updated_at=0 — silently reverted (dropped) by the server's monotonic guard.
+    if (lastSyncedUid && lastSyncedUid !== uid) await clearLocalAppData?.()
+    lastSyncedUid = uid
+    void startSync(uid)
+  }
 
   client.auth.onAuthStateChange((event, session) => {
     authoritative = true
@@ -62,9 +80,10 @@ export function runAuthBootstrap(
     if (event === 'PASSWORD_RECOVERY') set({ recovering: true })
     if (u) {
       set({ pending: null })
-      void startSync(u.id)
+      void adopt(u.id)
     } else {
       set({ recovering: false })
+      lastSyncedUid = null
       void stopSync()
     }
   })
@@ -78,7 +97,7 @@ export function runAuthBootstrap(
       }
       const u = data.session?.user
       set({ email: u?.email ?? null, initialized: true })
-      if (u) void startSync(u.id)
+      if (u) void adopt(u.id)
     },
     onError: (e) => {
       reportError(e, { scope: 'auth.getSession' })

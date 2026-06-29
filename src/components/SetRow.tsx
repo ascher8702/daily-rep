@@ -54,6 +54,9 @@ export function SetRow({ set, label, unit, isBodyweight, ex, domId, lastRef, onA
       ? `${lastRef.reps} reps`
       : `${fmtWeight(lastRef.weight, unit)} × ${lastRef.reps}`
     : null
+  // per-row accessible name so a screen-reader user can tell which set a field belongs to;
+  // label is "W" for warm-ups, otherwise the working-set number (e.g. "Set 2 weight (lb)")
+  const setName = isWarmup ? 'Warm-up set' : `Set ${label}`
   return (
     <div id={domId} className={`rounded-xl transition scroll-mt-24 ${set.done ? 'bg-recovery-fresh/[0.08]' : ''}`}>
     <div className="group grid grid-cols-[2rem_minmax(0,1fr)_minmax(0,1fr)_4.25rem] items-center gap-1.5 px-2 py-1.5">
@@ -68,13 +71,13 @@ export function SetRow({ set, label, unit, isBodyweight, ex, domId, lastRef, onA
       </div>
       <NumberField
         value={set.weight}
-        ariaLabel={`Weight in ${unit}`}
+        ariaLabel={`${setName} weight (${unit})`}
         onChange={onWeight}
         placeholder={lastRef && lastRef.weight > 0 ? String(lastRef.weight) : '0'}
       />
       <NumberField
         value={set.reps}
-        ariaLabel="Reps"
+        ariaLabel={`${setName} reps`}
         onChange={onReps}
         integer
         placeholder={lastRef ? String(lastRef.reps) : '0'}

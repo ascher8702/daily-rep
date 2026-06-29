@@ -64,6 +64,64 @@ export class InMemoryRateLimitStore implements RateLimitStore {
 }
 
 /**
+ * Minimal structural shape of a Supabase client's `.rpc(...)` we depend on — declared locally so this
+ * module stays import-free (no esm.sh / supabase-js) and unit-testable under both `deno test` and vitest,
+ * exactly like the rest of the file. The caller injects the real service-role client at the edge.
+ */
+export interface RpcRunner {
+  rpc(fn: string, args: Record<string, unknown>): Promise<{ data: unknown; error: unknown }>
+}
+
+/**
+ * Cross-instance store backed by the `public.consume_rate_limit` RPC (migration
+ * 20260628210000_rate_limit_buckets_and_consume_rpc). Unlike the in-memory store, the budget is shared
+ * across ALL warm function instances, so a per-uid budget can't be diluted by fan-out.
+ *
+ * It nominally satisfies RateLimitStore for interface conformance, but the ONLY supported path is the
+ * atomic `consume()` below — it performs the read-modify-write in ONE statement server-side, which the
+ * two-await get/set dance of `checkRateLimit` cannot do across instances. get()/set() therefore reject:
+ * a non-atomic read/write would silently defeat the cross-instance guarantee. Callers use `consume()`.
+ */
+export class PostgresRateLimitStore implements RateLimitStore {
+  constructor(private readonly client: RpcRunner) {}
+
+  /**
+   * Atomically consume one hit from `key`'s window and report the outcome. Errors are NOT swallowed here
+   * (a rejecting/erroring RPC throws) so the caller owns the fail-open vs fail-closed policy — matching
+   * `checkRateLimit`, whose store errors also propagate. `now` is epoch ms (injected clock) used only to
+   * compute resetAt/retryAfterMs for the response headers; the authoritative window lives in Postgres.
+   */
+  async consume(key: string, config: RateLimitConfig, now: number): Promise<RateLimitResult> {
+    const windowSeconds = Math.max(1, Math.ceil(config.windowMs / 1000))
+    const { data, error } = await this.client.rpc('consume_rate_limit', {
+      p_key: key,
+      p_limit: config.limit,
+      p_window_seconds: windowSeconds,
+    })
+    if (error) throw error instanceof Error ? error : new Error(String((error as { message?: string })?.message ?? error))
+    const allowed = data === true
+    const resetAt = now + config.windowMs
+    return {
+      allowed,
+      limit: config.limit,
+      remaining: allowed ? Math.max(0, config.limit - 1) : 0,
+      resetAt,
+      retryAfterMs: allowed ? 0 : config.windowMs,
+    }
+  }
+
+  // get()/set() exist only to satisfy RateLimitStore. The decision is atomic and lives in `consume()`;
+  // there is intentionally no non-atomic read/write path that could defeat the cross-instance guarantee.
+  get(_key: string): Promise<RateLimitEntry | null> {
+    return Promise.reject(new Error('PostgresRateLimitStore is atomic via consume(); get() is unsupported'))
+  }
+
+  set(_key: string, _entry: RateLimitEntry): Promise<void> {
+    return Promise.reject(new Error('PostgresRateLimitStore is atomic via consume(); set() is unsupported'))
+  }
+}
+
+/**
  * Pure fixed-window decision. Reads the key's entry, decides allow/deny for THIS hit, writes the
  * updated entry back, and returns the result. `now` is epoch ms (injectable clock) and is used raw — no
  * rounding. A hit that lands on/after `windowStart + windowMs` starts a fresh window (count = 1). Store

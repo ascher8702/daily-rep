@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest'
-import { nextClock, backoffMs, parseClock, parsePersistedState, isTerminalPushError } from '../lib/sync'
+import {
+  nextClock,
+  backoffMs,
+  parseClock,
+  parsePersistedState,
+  isTerminalPushError,
+  clockAfterAdopt,
+} from '../lib/sync'
 
 describe('nextClock (strictly-increasing sync clock)', () => {
   it('tracks wall time when it is ahead of the last clock', () => {
@@ -47,6 +54,31 @@ describe('isTerminalPushError (RLS denial is not retried)', () => {
     expect(isTerminalPushError({ code: undefined })).toBe(false)
     expect(isTerminalPushError(null)).toBe(false)
     expect(isTerminalPushError(undefined)).toBe(false)
+  })
+})
+
+describe('clockAfterAdopt: the post-adopt clock survives the server monotonic guard', () => {
+  // After pullAndReconcile adopts a newer cloud blob (cloudTs > clientUpdatedAt) it stamps the clock via
+  // clockAfterAdopt. That value MUST be strictly past cloudTs — otherwise the next push lands at
+  // client_updated_at <= cloudTs, the server's `<=` monotonic guard SILENTLY REVERTS it (the upsert
+  // still returns ok), and the merged (unioned) blob never reaches the DB. (The stateful adopt path
+  // itself isn't node-callable without a fake pull — see the §7.24 chokepoint convention — so we pin the
+  // load-bearing clock contract it relies on.)
+  it('clockAfterAdopt(local, cloud) is strictly > cloudTs so the post-adopt push is not reverted', () => {
+    // entry condition for the adopt branch: cloud strictly ahead of the local clock
+    const localClock = 500
+    const cloudTs = 1000
+    expect(cloudTs).toBeGreaterThan(localClock) // (precondition for entering the adopt branch)
+    const stamped = clockAfterAdopt(localClock, cloudTs)
+    expect(stamped).toBeGreaterThan(cloudTs) // push survives the server's `<=` revert guard
+  })
+
+  it('holds even when a same-millisecond local edit set the clock equal to cloudTs', () => {
+    // worst case: the local edit bumped the clock to exactly cloudTs.
+    // nextClock would land AT cloud (reverted); clockAfterAdopt must still clear it.
+    const stamped = clockAfterAdopt(1000, 1000)
+    expect(stamped).toBe(1001)
+    expect(stamped).toBeGreaterThan(1000)
   })
 })
 

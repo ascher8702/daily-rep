@@ -269,3 +269,23 @@ describe('prescribe — never stalls on sub-resolution increments (regression)',
     expect(p.weightDir).toBe('down')
   })
 })
+
+// A1: roundToAchievable's non-finite guard is the engine's last line of defense — a NaN/Infinity top
+// weight (which collapses to topSets=[] → roundToAchievable(NaN)) must never leave a non-finite weight
+// in the prescription. (The PRIMARY fix is hydration-time coercion of corrupt set values — see
+// mergePersisted-hydration.test.ts, which routes negative/string values through the real adopt path.)
+describe('prescribe — non-finite history weight never yields a non-finite prescribed weight', () => {
+  it('a NaN set weight does not propagate to the prescribed weight', () => {
+    const hist = [sessionSets('barbell-bench-press', [{ weight: NaN, reps: 12 }, { weight: NaN, reps: 12 }], NOW)]
+    const p = prescribe(bench, hist, [8, 12], fullGymProfile)!
+    expect(Number.isFinite(p.weight)).toBe(true)
+    expect(p.weight).toBeGreaterThanOrEqual(0)
+  })
+
+  it('an Infinity set weight does not yield a non-finite prescribed weight', () => {
+    const hist = [sessionSets('barbell-bench-press', [{ weight: Infinity, reps: 12 }], NOW)]
+    const p = prescribe(bench, hist, [8, 12], fullGymProfile)!
+    expect(Number.isFinite(p.weight)).toBe(true)
+    expect(p.weight).toBeGreaterThanOrEqual(0)
+  })
+})

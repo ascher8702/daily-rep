@@ -37,6 +37,15 @@ export const PRICING: Record<PlanId, {
 
 export const TRIAL_DAYS = 30
 
+/**
+ * Hard cap on how long we'll wait for the subscription read before treating it as failed. A stalled
+ * (not failed) connection never settles `.maybeSingle()`, which would otherwise strand the entitlement
+ * gate on the loading skeleton forever. Matches the auth bootstrap's getSession timeout. On timeout the
+ * fetch REJECTS so useEntitlement.refresh()'s catch falls back to the cached/fail-closed verdict and
+ * flips `loading` false.
+ */
+export const SUBSCRIPTION_FETCH_TIMEOUT_MS = 8000
+
 export interface Entitlement {
   /** still resolving the subscription row */
   loading: boolean
@@ -106,7 +115,11 @@ export function deriveEntitlement(
     inTrial: !hasSubscription && trialActive,
     trialDaysLeft,
     hasSubscription,
-    everSubscribed: !!row.stripe_subscription_id,
+    // A Stripe subscription id alone isn't proof of a real subscription: a never-completed checkout
+    // leaves status incomplete/incomplete_expired (and unpaid) with an id but no payment ever made.
+    // Gate on a status implying a payment actually occurred so the UI doesn't show "subscription ended"
+    // copy to someone who only ever started (and abandoned) a checkout. Access logic is unchanged.
+    everSubscribed: !!row.stripe_subscription_id && !NEVER_PAID_STATUSES.includes(row.status),
     status: row.status,
     plan: (row.plan as PlanId | null) ?? null,
     cancelAtPeriodEnd: row.cancel_at_period_end,
@@ -115,12 +128,23 @@ export function deriveEntitlement(
   }
 }
 
-/** Fetch the caller's subscription row (RLS scopes it to them; returns null when none / unconfigured). */
+/** Fetch the caller's subscription row (RLS scopes it to them; returns null when none / unconfigured).
+ *  REJECTS if the read hasn't settled within SUBSCRIPTION_FETCH_TIMEOUT_MS so a hung connection can't
+ *  strand the entitlement gate — the caller's catch then serves the cached/fail-closed verdict. */
 export async function fetchSubscription(): Promise<SubscriptionRow | null> {
   if (!supabase) return null
-  const { data, error } = await supabase.from('subscriptions').select('*').maybeSingle()
-  if (error) throw error
-  return data
+  const query = supabase.from('subscriptions').select('*').maybeSingle()
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error('subscription fetch timed out')), SUBSCRIPTION_FETCH_TIMEOUT_MS)
+  })
+  try {
+    const { data, error } = await Promise.race([query, timeout])
+    if (error) throw error
+    return data
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
 }
 
 const GENERIC_ERROR = 'Something went wrong. Please try again.'

@@ -55,6 +55,35 @@ describe('roundToAchievable — bodyweight', () => {
   })
 })
 
+describe('roundToAchievable — non-finite / negative input never emits NaN', () => {
+  // A1: a corrupt history can feed NaN/Infinity/negative into the prescription path; the bare
+  // `weight <= 0` guard let NaN through (NaN <= 0 is false). Every load type must collapse to 0.
+  for (const [label, ex] of [
+    ['barbell', bench],
+    ['dumbbell', dbPress],
+    ['machine', legPress],
+    ['bodyweight', pushup],
+  ] as const) {
+    it(`returns 0 for NaN / Infinity / negative (${label})`, () => {
+      expect(roundToAchievable(NaN, ex, 'lb')).toBe(0)
+      expect(roundToAchievable(Infinity, ex, 'lb')).toBe(0)
+      expect(roundToAchievable(-Infinity, ex, 'lb')).toBe(0)
+      expect(roundToAchievable(-50, ex, 'lb')).toBe(0)
+      // and the kg path
+      expect(roundToAchievable(NaN, ex, 'kg')).toBe(0)
+    })
+  }
+})
+
+describe('nextLoadableUp / prevLoadableDown — non-finite input is finite', () => {
+  it('returns a finite number for NaN input (never loops on NaN comparisons)', () => {
+    expect(Number.isFinite(nextLoadableUp(NaN, bench, 'lb'))).toBe(true)
+    expect(Number.isFinite(prevLoadableDown(NaN, bench, 'lb'))).toBe(true)
+    expect(Number.isFinite(nextLoadableUp(NaN, dbPress, 'lb'))).toBe(true)
+    expect(Number.isFinite(prevLoadableDown(NaN, dbPress, 'lb'))).toBe(true)
+  })
+})
+
 describe('startingWeight — cold-start seeding', () => {
   it('seeds a realistic, loadable starting weight for weighted lifts', () => {
     const w = startingWeight(bench, fullGymProfile)

@@ -1,7 +1,15 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4'
 import Stripe from 'https://esm.sh/stripe@17.7.0?target=deno'
-import { checkRateLimit, InMemoryRateLimitStore, LIMITS, rateLimitResponseHeaders } from '../_shared/rateLimit.ts'
+import {
+  checkRateLimit,
+  InMemoryRateLimitStore,
+  LIMITS,
+  PostgresRateLimitStore,
+  rateLimitResponseHeaders,
+  type RateLimitResult,
+} from '../_shared/rateLimit.ts'
+import { corsHeaders } from '../_shared/cors.ts'
 
 // GDPR Art.17 erasure: deletes the authenticated caller's data (across public + analytics) then their
 // auth user. verify_jwt=true gates this to signed-in callers; we re-derive the uid from the JWT so a
@@ -13,18 +21,16 @@ import { checkRateLimit, InMemoryRateLimitStore, LIMITS, rateLimitResponseHeader
 // NOT erased — it has no FK to auth.users and purge_user_data does not touch it, so a deleted user can't
 // farm a fresh free trial by re-registering. Retained on the legitimate-interest (fraud-prevention)
 // basis disclosed in the Privacy Policy. It is not used for contact or any other purpose.
-const cors = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-}
 
 const CANCEL_BEFORE_DELETE_STATUSES = ['active', 'trialing', 'past_due', 'paused', 'unpaid', 'incomplete']
 
-// Per-instance fixed-window limiter (one Map per cold start; see spec §11 on warm-instance scope).
+// Per-instance fixed-window limiter — FALLBACK only. The primary store is Postgres-backed
+// (PostgresRateLimitStore) so the irreversible-erasure budget is enforced ACROSS warm instances, not
+// diluted per instance. We fall back to this Map if the consume RPC errors (fail-open, see below).
 const rateStore = new InMemoryRateLimitStore()
 
 Deno.serve(async (req) => {
+  const cors = corsHeaders(req)
   const json = (body: unknown, status = 200) =>
     new Response(JSON.stringify(body), { status, headers: { ...cors, 'Content-Type': 'application/json' } })
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
@@ -40,17 +46,31 @@ Deno.serve(async (req) => {
     if (uErr || !user) return json({ error: 'unauthorized' }, 401)
     const uid = user.id
 
+    const admin = createClient(url, service)
+
     // Stricter budget: an irreversible purge must not be spammable. Guard before any Stripe/DB work
-    // (anonymous floods are stopped by the 401 above).
-    const rl = await checkRateLimit(rateStore, 'delete-account:' + uid, LIMITS.DELETE_ACCOUNT, Date.now())
-    if (!rl.allowed) {
+    // (anonymous floods are stopped by the 401 above). Primary path is the cross-instance Postgres store
+    // (the in-memory Map alone is per-instance and dilutable under fan-out); fall back to the in-memory
+    // limiter if the consume RPC errors — FAIL-OPEN to match the rest of this function (never block a
+    // legitimate erasure on a limiter outage; the 3/10min budget is abuse-mitigation, not a hard invariant).
+    const key = 'delete-account:' + uid
+    let rl: RateLimitResult | null = null
+    try {
+      rl = await new PostgresRateLimitStore(admin).consume(key, LIMITS.DELETE_ACCOUNT, Date.now())
+    } catch (e) {
+      console.warn('[delete-account] rate-limit RPC failed, falling back to in-memory store', String(e))
+      try {
+        rl = await checkRateLimit(rateStore, key, LIMITS.DELETE_ACCOUNT, Date.now())
+      } catch {
+        rl = null // both stores errored → fail open
+      }
+    }
+    if (rl && !rl.allowed) {
       return new Response(JSON.stringify({ error: 'rate_limited' }), {
         status: 429,
         headers: { ...cors, 'Content-Type': 'application/json', ...rateLimitResponseHeaders(rl) },
       })
     }
-
-    const admin = createClient(url, service)
 
     const { data: subRow, error: subErr } = await admin
       .from('subscriptions')
