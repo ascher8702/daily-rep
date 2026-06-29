@@ -1,118 +1,150 @@
-'use client'
+"use client";
 
-import { useMemo, useState } from 'react'
-import { useRouter } from 'next/navigation'
-import type { Equipment, MuscleGroup } from '@/types'
-import { useStore, resolvePlan } from '@/store/useStore'
-import { computeRecovery, freshnessFromFatigue, recoveryLabel, recoveryToken } from '@/lib/recovery'
-import { generateWorkout } from '@/lib/generator'
-import { injuryConstraints, isBlockedByInjury } from '@/lib/injuries'
-import { resolvePlanLifts } from '@/lib/substitution'
-import { computeWeeklyStreak, localWeek } from '@/lib/stats'
-import { useNow } from '@/lib/useNow'
-import { fmtDate, fmtDuration, fmtWeight } from '@/lib/format'
-import { ALL_MUSCLES, MUSCLES } from '@/data/muscles'
-import { dayFocusMuscles, planEquipment } from '@/data/plans'
-import { getExercise } from '@/data/exercises'
-import { Button } from '@/components/ui/Button'
-import { BlazeHeroCard, type HeroChip, type HeroExercise } from '@/components/ui/BlazeHeroCard'
-import { RecoveryRing } from '@/components/ui/RecoveryRing'
-import { RecoveryBar } from '@/components/ui/RecoveryBar'
-import { StatTile } from '@/components/ui/StatTile'
-import { useConfirm } from '@/components/ConfirmProvider'
-import SwitchWorkoutSheet from '@/components/SwitchWorkoutSheet'
-import TrialBanner from '@/components/TrialBanner'
-import { PlayIcon, PlusIcon, RefreshIcon, FlameIcon, TargetIcon, ChevronRight } from '@/components/icons'
+import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import type { Equipment, MuscleGroup } from "@/types";
+import { useStore, resolvePlan } from "@/store/useStore";
+import {
+  computeRecovery,
+  freshnessFromFatigue,
+  recoveryLabel,
+  recoveryToken,
+} from "@/lib/recovery";
+import { generateWorkout } from "@/lib/generator";
+import { injuryConstraints, isBlockedByInjury } from "@/lib/injuries";
+import { resolvePlanLifts } from "@/lib/substitution";
+import { computeWeeklyStreak, localWeek } from "@/lib/stats";
+import { useNow } from "@/lib/useNow";
+import { fmtDate, fmtDuration, fmtWeight } from "@/lib/format";
+import { ALL_MUSCLES, MUSCLES } from "@/data/muscles";
+import { dayFocusMuscles, planEquipment } from "@/data/plans";
+import { getExercise } from "@/data/exercises";
+import { Button } from "@/components/ui/Button";
+import {
+  BlazeHeroCard,
+  type HeroChip,
+  type HeroExercise,
+} from "@/components/ui/BlazeHeroCard";
+import { RecoveryRing } from "@/components/ui/RecoveryRing";
+import { RecoveryBar } from "@/components/ui/RecoveryBar";
+import { StatTile } from "@/components/ui/StatTile";
+import { useConfirm } from "@/components/ConfirmProvider";
+import SwitchWorkoutSheet from "@/components/SwitchWorkoutSheet";
+import TrialBanner from "@/components/TrialBanner";
+import {
+  PlayIcon,
+  PlusIcon,
+  RefreshIcon,
+  FlameIcon,
+  TargetIcon,
+  ChevronRight,
+} from "@/components/icons";
 
-const DAY = 1000 * 60 * 60 * 24
+const DAY = 1000 * 60 * 60 * 24;
 
 // Monotonic seed for free re-rolls ("Build", "Rebuild", "New workout", "Target muscles"). Module-scoped
 // (not component state) so it survives HomeScreen unmount/remount across navigation — otherwise every
 // rebuild would reuse seed 1 and return the same workout. The generator's jitter is keyed on `shuffle`.
-let freeBuildSeed = 0
+let freeBuildSeed = 0;
 
 function greeting(now: number): string {
-  const h = new Date(now).getHours()
-  if (h < 12) return 'Good morning'
-  if (h < 18) return 'Good afternoon'
-  return 'Good evening'
+  const h = new Date(now).getHours();
+  if (h < 12) return "Good morning";
+  if (h < 18) return "Good afternoon";
+  return "Good evening";
 }
 
 /** A short label for the user's equipment profile, shown on the workout card. */
 function gymLabel(equipment: string[]): string {
-  if (equipment.includes('barbell') && (equipment.includes('machine') || equipment.includes('cable')))
-    return 'Full Gym'
-  if (equipment.includes('barbell') || equipment.includes('dumbbell')) return 'Home Gym'
-  return 'Bodyweight'
+  if (
+    equipment.includes("barbell") &&
+    (equipment.includes("machine") || equipment.includes("cable"))
+  )
+    return "Full Gym";
+  if (equipment.includes("barbell") || equipment.includes("dumbbell"))
+    return "Home Gym";
+  return "Bodyweight";
 }
 
 export default function HomeScreen() {
-  const router = useRouter()
-  const confirm = useConfirm()
-  const profile = useStore((s) => s.profile)
-  const workouts = useStore((s) => s.workouts)
-  const current = useStore((s) => s.current)
-  const generate = useStore((s) => s.generate)
-  const discardCurrent = useStore((s) => s.discardCurrent)
-  const activePlan = useStore((s) => s.activePlan)
-  const customPlans = useStore((s) => s.customPlans)
-  const generateFromPlan = useStore((s) => s.generateFromPlan)
-  const generateFromPlanDay = useStore((s) => s.generateFromPlanDay)
-  const skipPlanDay = useStore((s) => s.skipPlanDay)
-  const startWorkout = useStore((s) => s.startWorkout)
+  const router = useRouter();
+  const confirm = useConfirm();
+  const profile = useStore((s) => s.profile);
+  const workouts = useStore((s) => s.workouts);
+  const current = useStore((s) => s.current);
+  const generate = useStore((s) => s.generate);
+  const discardCurrent = useStore((s) => s.discardCurrent);
+  const activePlan = useStore((s) => s.activePlan);
+  const customPlans = useStore((s) => s.customPlans);
+  const generateFromPlan = useStore((s) => s.generateFromPlan);
+  const generateFromPlanDay = useStore((s) => s.generateFromPlanDay);
+  const skipPlanDay = useStore((s) => s.skipPlanDay);
+  const startWorkout = useStore((s) => s.startWorkout);
 
-  const [switchOpen, setSwitchOpen] = useState(false)
+  const [switchOpen, setSwitchOpen] = useState(false);
 
   // Coarse "now" that only changes ~once a minute (held in state, advanced by an interval, cleared on
   // unmount). A render-fresh Date.now() would change on every render and defeat the recovery/stats
   // useMemos below, recomputing the per-muscle recovery model on every unrelated re-render. Bucketing to
   // 60s lets those memos cache while keeping freshness (which decays over time) live within ~1 minute.
-  const now = useNow(60_000)
+  const now = useNow(60_000);
   // a stable timestamp for previewing a generated session, so the plan hero's fallback preview
   // doesn't re-roll its exercises on every render
-  const [genNow] = useState(() => Date.now())
+  const [genNow] = useState(() => Date.now());
 
   const fresh = useMemo(() => {
-    const fatigue = computeRecovery(workouts, now)
-    return freshnessFromFatigue(fatigue)
-  }, [workouts, now])
+    const fatigue = computeRecovery(workouts, now);
+    return freshnessFromFatigue(fatigue);
+  }, [workouts, now]);
 
   const overallReadiness = useMemo(() => {
-    const total = ALL_MUSCLES.reduce((sum, m) => sum + fresh[m], 0)
-    return Math.round(total / ALL_MUSCLES.length)
-  }, [fresh])
-
+    const total = ALL_MUSCLES.reduce((sum, m) => sum + fresh[m], 0);
+    return Math.round(total / ALL_MUSCLES.length);
+  }, [fresh]);
 
   const stats = useMemo(() => {
-    const completed = workouts.filter((w) => w.status === 'completed')
-    const completionTimes = completed.map((w) => w.completedAt ?? w.date)
-    const thisWeek = completionTimes.filter((ts) => ts <= now && now - ts <= 7 * DAY).length
+    const completed = workouts.filter((w) => w.status === "completed");
+    const completionTimes = completed.map((w) => w.completedAt ?? w.date);
+    const thisWeek = completionTimes.filter(
+      (ts) => ts <= now && now - ts <= 7 * DAY,
+    ).length;
     // calendar-week count (Mon-aligned, matches the streak) for the adherence chip
-    const weekDone = completionTimes.filter((ts) => localWeek(ts) === localWeek(now)).length
+    const weekDone = completionTimes.filter(
+      (ts) => localWeek(ts) === localWeek(now),
+    ).length;
     return {
       thisWeek,
       weekDone,
       total: completed.length,
       streak: computeWeeklyStreak(completionTimes, now),
-    }
-  }, [workouts, now])
+    };
+  }, [workouts, now]);
 
-  const name = profile.name.trim() || 'Athlete'
+  const name = profile.name.trim() || "Athlete";
 
-  const plan = activePlan ? resolvePlan(activePlan.planId, customPlans) : undefined
-  const planDay = plan ? plan.schedule[activePlan!.dayIndex % plan.schedule.length] : undefined
-  const onPlan = !!(plan && planDay)
-  const planDayNum = onPlan ? (activePlan!.dayIndex % plan!.schedule.length) + 1 : 0
+  const plan = activePlan
+    ? resolvePlan(activePlan.planId, customPlans)
+    : undefined;
+  const planDay = plan
+    ? plan.schedule[activePlan!.dayIndex % plan.schedule.length]
+    : undefined;
+  const onPlan = !!(plan && planDay);
+  const planDayNum = onPlan
+    ? (activePlan!.dayIndex % plan!.schedule.length) + 1
+    : 0;
   // weekly training target: the plan's frequency when on a plan, else the onboarding preference
-  const weeklyTarget = Math.max(1, onPlan ? plan!.daysPerWeek : profile.daysPerWeek ?? 3)
-  const weekMet = stats.weekDone >= weeklyTarget
+  const weeklyTarget = Math.max(
+    1,
+    onPlan ? plan!.daysPerWeek : (profile.daysPerWeek ?? 3),
+  );
+  const weekMet = stats.weekDone >= weeklyTarget;
   // does the in-progress session belong to the active plan's current day?
   const currentIsPlanDay = !!(
     current &&
     activePlan &&
     current.planId === activePlan.planId &&
     current.planDayLabel === planDay?.label
-  )
+  );
 
   // A one-tap preview of today's plan day. It must mirror what `Start` (generateFromPlan) ACTUALLY
   // builds, or the hero looks broken: for a bodyweight user on a barbell plan day, the explicit lifts
@@ -120,122 +152,156 @@ export default function HomeScreen() {
   // focus — so the preview falls back the same way (showing real, equippable exercises) instead of
   // an empty "your gear doesn't fit this day's lifts" hero.
   const planPreviewData = useMemo<{
-    items: { exerciseId: string; name: string; detail: string }[]
-    adapted: boolean
+    items: { exerciseId: string; name: string; detail: string }[];
+    adapted: boolean;
   }>(() => {
-    if (!onPlan || !planDay || !plan) return { items: [], adapted: false }
+    if (!onPlan || !planDay || !plan) return { items: [], adapted: false };
     // 1) the program's explicit lifts, equipment-substituted (distinct). Use them only when they
     //    didn't collapse heavily — mirrors generateFromPlan so the preview matches what Start builds.
     if (planDay.lifts?.length) {
-      const owned = new Set<Equipment>([...profile.equipment, 'bodyweight'])
-      let resolved = resolvePlanLifts(planDay.lifts, owned, planDay.goal ?? profile.goal).resolved
+      const owned = new Set<Equipment>([...profile.equipment, "bodyweight"]);
+      let resolved = resolvePlanLifts(
+        planDay.lifts,
+        owned,
+        planDay.goal ?? profile.goal,
+      ).resolved;
       // mirror the build (resolveDayLifts): on plan days, drop lifts the user opted to work around in plans
-      const previewConstraints = injuryConstraints(profile, { surface: 'plan' })
+      const previewConstraints = injuryConstraints(profile, {
+        surface: "plan",
+      });
       if (previewConstraints.hasConstraints) {
         resolved = resolved.filter(({ exerciseId }) => {
-          const ex = getExercise(exerciseId)
-          return !ex || !isBlockedByInjury(ex, previewConstraints)
-        })
+          const ex = getExercise(exerciseId);
+          return !ex || !isBlockedByInjury(ex, previewConstraints);
+        });
       }
       if (resolved.length >= Math.min(3, planDay.lifts.length)) {
         return {
           adapted: false,
           items: resolved.map(({ lift, exerciseId }) => ({
             exerciseId,
-            name: getExercise(exerciseId)?.name ?? 'Exercise',
+            name: getExercise(exerciseId)?.name ?? "Exercise",
             detail: `${lift.sets} × ${lift.repMin}–${lift.repMax}`,
           })),
-        }
+        };
       }
     }
     // 2) explicit lifts don't equip / collapsed → preview the focus-based fallback Start will build
-    if (planDay.focus.length === 0) return { items: [], adapted: false }
+    if (planDay.focus.length === 0) return { items: [], adapted: false };
     const fallback = generateWorkout(profile, workouts, genNow, {
       focusOverride: dayFocusMuscles(planDay.focus),
       equipmentOverride: planEquipment(plan),
       goalOverride: planDay.goal,
       // mirror generateFromPlan's fallback so the preview matches the build
-      surface: 'plan',
-    })
+      surface: "plan",
+    });
     return {
       adapted: !!planDay.lifts?.length, // had named lifts but none equipped → adapted to gear
       items: fallback.exercises.map((we) => {
-        const working = we.sets.filter((s) => !s.warmup)
+        const working = we.sets.filter((s) => !s.warmup);
         return {
           exerciseId: we.exerciseId,
-          name: getExercise(we.exerciseId)?.name ?? 'Exercise',
+          name: getExercise(we.exerciseId)?.name ?? "Exercise",
           detail: `${working.length} × ${we.targetReps[0]}–${we.targetReps[1]}`,
-        }
+        };
       }),
-    }
-  }, [onPlan, planDay, plan, profile, workouts, genNow])
-  const planPreview = planPreviewData.items
-  const planAdapted = planPreviewData.adapted
+    };
+  }, [onPlan, planDay, plan, profile, workouts, genNow]);
+  const planPreview = planPreviewData.items;
+  const planAdapted = planPreviewData.adapted;
 
   const muscleCount = current
-    ? new Set(current.exercises.flatMap((e) => getExercise(e.exerciseId)?.primary ?? [])).size
-    : 0
+    ? new Set(
+        current.exercises.flatMap(
+          (e) => getExercise(e.exerciseId)?.primary ?? [],
+        ),
+      ).size
+    : 0;
   // same "{n} exercises · {m} muscles" meta for the plan-day hero as the session hero
   const planMuscleCount = useMemo(
-    () => new Set(planPreview.flatMap((p) => getExercise(p.exerciseId)?.primary ?? [])).size,
+    () =>
+      new Set(
+        planPreview.flatMap((p) => getExercise(p.exerciseId)?.primary ?? []),
+      ).size,
     [planPreview],
-  )
+  );
   // estimated session length — prefer the generator's stored estimate, else ~11 min/exercise
-  const estDuration = (n: number) => Math.max(11, n * 11)
+  const estDuration = (n: number) => Math.max(11, n * 11);
 
   // ---- Today hero (Charge/Blaze "PUSH DAY" design) data ----
   // shared status chips: equipment · weekly adherence · streak
   const heroChips: HeroChip[] = [
     { label: gymLabel(profile.equipment) },
     { label: `${stats.weekDone}/${weeklyTarget} week` },
-    ...(stats.streak > 0 ? [{ label: `${stats.streak} wk`, icon: <FlameIcon size={11} /> }] : []),
-  ]
+    ...(stats.streak > 0
+      ? [{ label: `${stats.streak} wk`, icon: <FlameIcon size={11} /> }]
+      : []),
+  ];
   // in-progress session → numbered exercise rows (focus lift first), compact "N × a–b · weight" detail
-  const sessionExercises: HeroExercise[] = (current?.exercises ?? []).slice(0, 4).map((we, i) => {
-    const ex = getExercise(we.exerciseId)
-    const working = we.sets.filter((s) => !s.warmup)
-    const topW = working.reduce((m, s) => Math.max(m, s.weight), 0)
-    const bw = ex?.equipment.includes('bodyweight') && topW === 0
-    return {
-      name: ex?.name ?? 'Exercise',
-      detail: `${working.length} × ${we.targetReps[0]}–${we.targetReps[1]}${topW > 0 ? ' · ' + fmtWeight(topW, profile.unit) : bw ? ' · BW' : ''}`,
-      focus: i === 0,
-    }
-  })
+  const sessionExercises: HeroExercise[] = (current?.exercises ?? [])
+    .slice(0, 4)
+    .map((we, i) => {
+      const ex = getExercise(we.exerciseId);
+      const working = we.sets.filter((s) => !s.warmup);
+      const topW = working.reduce((m, s) => Math.max(m, s.weight), 0);
+      const bw = ex?.equipment.includes("bodyweight") && topW === 0;
+      return {
+        name: ex?.name ?? "Exercise",
+        detail: `${working.length} × ${we.targetReps[0]}–${we.targetReps[1]}${topW > 0 ? " · " + fmtWeight(topW, profile.unit) : bw ? " · BW" : ""}`,
+        focus: i === 0,
+      };
+    });
   // plan-day preview → same row shape (no logged weight yet)
   const planExercises: HeroExercise[] = planPreview
     .slice(0, 4)
-    .map((p, i) => ({ name: p.name, detail: p.detail, focus: i === 0 }))
+    .map((p, i) => ({ name: p.name, detail: p.detail, focus: i === 0 }));
 
   // recovery card: average freshness per body region → the mockup's 4 bars (Push/Pull/Legs/Core)
-  const REGION_LABELS = { push: 'Push', pull: 'Pull', legs: 'Legs', core: 'Core' } as const
-  const regionBars = (['push', 'pull', 'legs', 'core'] as const).map((region) => {
-    const ms = ALL_MUSCLES.filter((m) => MUSCLES[m].region === region)
-    const avg = ms.length ? ms.reduce((s, m) => s + fresh[m], 0) / ms.length : 0
-    return { label: REGION_LABELS[region], pct: avg, tone: recoveryToken(avg) }
-  })
+  const REGION_LABELS = {
+    push: "Push",
+    pull: "Pull",
+    legs: "Legs",
+    core: "Core",
+  } as const;
+  const regionBars = (["push", "pull", "legs", "core"] as const).map(
+    (region) => {
+      const ms = ALL_MUSCLES.filter((m) => MUSCLES[m].region === region);
+      const avg = ms.length
+        ? ms.reduce((s, m) => s + fresh[m], 0) / ms.length
+        : 0;
+      return {
+        label: REGION_LABELS[region],
+        pct: avg,
+        tone: recoveryToken(avg),
+      };
+    },
+  );
 
   const buildAndGo = async (override?: MuscleGroup[]) => {
     if (current) {
       const hasLogged =
-        current.status === 'active' || current.exercises.some((we) => we.sets.some((s) => s.done))
+        current.status === "active" ||
+        current.exercises.some((we) => we.sets.some((s) => s.done));
       // An untouched, not-yet-started session (e.g. the one auto-generated at onboarding) holds no
       // work to lose, so replace it silently — a first-time user tapping a Recommended Focus pill,
       // which the copy invites, shouldn't hit a "Replace workout?" dialog before logging anything.
       if (
         hasLogged &&
         !(await confirm({
-          title: 'Replace workout?',
-          body: 'Your in-progress workout will be replaced with a new one. Logged sets will be lost.',
-          confirmLabel: 'Replace',
-          tone: 'danger',
+          title: "Replace workout?",
+          body: "Your in-progress workout will be replaced with a new one. Logged sets will be lost.",
+          confirmLabel: "Replace",
+          tone: "danger",
         }))
       )
-        return
+        return;
     }
-    generate({ ...(override ? { focusOverride: override } : {}), shuffle: ++freeBuildSeed })
-    router.push('/session')
-  }
+    generate({
+      ...(override ? { focusOverride: override } : {}),
+      shuffle: ++freeBuildSeed,
+    });
+    router.push("/session");
+  };
 
   const startPlanWorkout = async () => {
     // already mid-session on THIS plan day — resume it instead of discarding logged work
@@ -245,77 +311,79 @@ export default function HomeScreen() {
       current.planId === activePlan.planId &&
       current.planDayLabel === planDay?.label
     ) {
-      router.push('/session')
-      return
+      router.push("/session");
+      return;
     }
     if (current) {
       const hasLogged =
-        current.status === 'active' || current.exercises.some((we) => we.sets.some((s) => s.done))
+        current.status === "active" ||
+        current.exercises.some((we) => we.sets.some((s) => s.done));
       if (
         !(await confirm(
           hasLogged
             ? {
-                title: 'Replace workout?',
-                body: 'Your in-progress workout will be replaced with this plan day. Logged sets will be lost.',
-                confirmLabel: 'Replace',
-                tone: 'danger',
+                title: "Replace workout?",
+                body: "Your in-progress workout will be replaced with this plan day. Logged sets will be lost.",
+                confirmLabel: "Replace",
+                tone: "danger",
               }
             : {
-                title: 'Replace workout?',
-                body: 'Your current workout will be replaced with this plan day.',
-                confirmLabel: 'Replace',
+                title: "Replace workout?",
+                body: "Your current workout will be replaced with this plan day.",
+                confirmLabel: "Replace",
               },
         ))
       )
-        return
+        return;
     }
     // one tap from Home = today's workout actually started (timer running), not a second "Start"
-    generateFromPlan()
-    startWorkout()
-    router.push('/session')
-  }
+    generateFromPlan();
+    startWorkout();
+    router.push("/session");
+  };
 
   /** Build a chosen plan-schedule day (from the Switch picker) and open it, confirming a replace if
    *  there's logged work to lose. Lands on the planned session so the user can review then Start. */
   const switchToPlanDay = async (dayIndex: number) => {
     if (current) {
       const hasLogged =
-        current.status === 'active' || current.exercises.some((we) => we.sets.some((s) => s.done))
+        current.status === "active" ||
+        current.exercises.some((we) => we.sets.some((s) => s.done));
       if (
         hasLogged &&
         !(await confirm({
-          title: 'Replace workout?',
-          body: 'Your in-progress workout will be replaced with this plan day. Logged sets will be lost.',
-          confirmLabel: 'Replace',
-          tone: 'danger',
+          title: "Replace workout?",
+          body: "Your in-progress workout will be replaced with this plan day. Logged sets will be lost.",
+          confirmLabel: "Replace",
+          tone: "danger",
         }))
       )
-        return
+        return;
     }
-    generateFromPlanDay(dayIndex)
-    router.push('/session')
-  }
+    generateFromPlanDay(dayIndex);
+    router.push("/session");
+  };
 
   /** Resume an active session, or START a built-but-not-yet-started one (timer running). */
   const openCurrent = () => {
-    if (current && current.status !== 'active') startWorkout()
-    router.push('/session')
-  }
+    if (current && current.status !== "active") startWorkout();
+    router.push("/session");
+  };
 
   /** Skip the current plan day, warning that it advances the schedule (and detaches a tied session). */
   const confirmSkip = async () => {
-    const tied = currentIsPlanDay
+    const tied = currentIsPlanDay;
     if (
       await confirm({
-        title: `Skip ${planDay?.title ?? 'this day'}?`,
+        title: `Skip ${planDay?.title ?? "this day"}?`,
         body: tied
-          ? 'This moves you to the next plan day. Your in-progress workout will be kept but no longer count toward the plan.'
-          : 'This moves you to the next plan day in the schedule.',
-        confirmLabel: 'Skip day',
+          ? "This moves you to the next plan day. Your in-progress workout will be kept but no longer count toward the plan."
+          : "This moves you to the next plan day in the schedule.",
+        confirmLabel: "Skip day",
       })
     )
-      skipPlanDay()
-  }
+      skipPlanDay();
+  };
 
   return (
     <div className="animate-fade-in">
@@ -334,24 +402,32 @@ export default function HomeScreen() {
         {/* ---- Today's Workout: the one-tap hero (plan day leads when on a plan) ---- */}
         {current ? (
           <BlazeHeroCard
-            eyebrow={`Today${currentIsPlanDay && plan ? ` · ${plan.name} · Day ${planDayNum}/${plan.schedule.length}` : ''}`}
+            eyebrow={`Today${currentIsPlanDay && plan ? ` · ${plan.name} · Day ${planDayNum}/${plan.schedule.length}` : ""}`}
             title={current.title}
             meta={
               current.exercises.length > 0
-                ? `${current.exercises.length} exercise${current.exercises.length === 1 ? '' : 's'} · ${muscleCount} muscle${muscleCount === 1 ? '' : 's'} · ~${fmtDuration(current.durationMin ?? estDuration(current.exercises.length))}`
+                ? `${current.exercises.length} exercise${current.exercises.length === 1 ? "" : "s"} · ${muscleCount} muscle${muscleCount === 1 ? "" : "s"} · ~${fmtDuration(current.durationMin ?? estDuration(current.exercises.length))}`
                 : undefined
             }
             chips={heroChips}
             onSwitch={() => setSwitchOpen(true)}
             exercises={sessionExercises}
             extraCount={Math.max(0, current.exercises.length - 4)}
-            onExerciseClick={() => router.push('/session')}
-            description={current.exercises.length === 0 ? 'No exercises yet — add some to get started.' : undefined}
+            onExerciseClick={() => router.push("/session")}
+            description={
+              current.exercises.length === 0
+                ? "No exercises yet — add some to get started."
+                : undefined
+            }
             cta={
               current.exercises.length === 0
-                ? { label: 'Add exercises', onClick: () => router.push('/session'), icon: <PlusIcon size={18} strokeWidth={3} /> }
+                ? {
+                    label: "Add exercises",
+                    onClick: () => router.push("/session"),
+                    icon: <PlusIcon size={18} strokeWidth={3} />,
+                  }
                 : {
-                    label: current.status === 'active' ? 'Continue' : 'Start',
+                    label: current.status === "active" ? "Continue" : "Start",
                     onClick: openCurrent,
                     icon: <PlayIcon size={18} />,
                   }
@@ -360,18 +436,19 @@ export default function HomeScreen() {
               <button
                 onClick={async () => {
                   const hasLogged =
-                    current.status === 'active' || current.exercises.some((we) => we.sets.some((s) => s.done))
+                    current.status === "active" ||
+                    current.exercises.some((we) => we.sets.some((s) => s.done));
                   if (
                     hasLogged &&
                     !(await confirm({
-                      title: 'Discard workout?',
-                      body: 'This workout will be removed without being saved. Logged sets will be lost.',
-                      confirmLabel: 'Discard',
-                      tone: 'danger',
+                      title: "Discard workout?",
+                      body: "This workout will be removed without being saved. Logged sets will be lost.",
+                      confirmLabel: "Discard",
+                      tone: "danger",
                     }))
                   )
-                    return
-                  discardCurrent()
+                    return;
+                  discardCurrent();
                 }}
                 className="w-full text-center text-sm text-fg/40 mt-2 min-h-[44px] py-2 active:text-fg/60"
               >
@@ -386,7 +463,7 @@ export default function HomeScreen() {
             title={planDay!.title}
             meta={
               planPreview.length > 0
-                ? `${planPreview.length} exercise${planPreview.length === 1 ? '' : 's'} · ${planMuscleCount} muscle${planMuscleCount === 1 ? '' : 's'} · ~${fmtDuration(estDuration(planPreview.length))}${planAdapted ? ' · adapted' : ''}`
+                ? `${planPreview.length} exercise${planPreview.length === 1 ? "" : "s"} · ${planMuscleCount} muscle${planMuscleCount === 1 ? "" : "s"} · ~${fmtDuration(estDuration(planPreview.length))}${planAdapted ? " · adapted" : ""}`
                 : undefined
             }
             chips={heroChips}
@@ -400,8 +477,16 @@ export default function HomeScreen() {
             }
             cta={
               planPreview.length > 0
-                ? { label: 'Start', onClick: startPlanWorkout, icon: <PlayIcon size={18} /> }
-                : { label: 'Build a free workout', onClick: () => buildAndGo(), icon: <PlusIcon size={18} strokeWidth={3} /> }
+                ? {
+                    label: "Start",
+                    onClick: startPlanWorkout,
+                    icon: <PlayIcon size={18} />,
+                  }
+                : {
+                    label: "Build a free workout",
+                    onClick: () => buildAndGo(),
+                    icon: <PlusIcon size={18} strokeWidth={3} />,
+                  }
             }
             footer={
               <button
@@ -421,7 +506,11 @@ export default function HomeScreen() {
             onSwitch={() => setSwitchOpen(true)}
             switchLabel="Options"
             description="We'll build a fresh session around how recovered each muscle is — targeting what's ready and resting what isn't."
-            cta={{ label: "Build today's workout", onClick: () => buildAndGo(), icon: <PlusIcon size={18} strokeWidth={3} /> }}
+            cta={{
+              label: "Build workout",
+              onClick: () => buildAndGo(),
+              icon: <PlusIcon size={18} strokeWidth={3} />,
+            }}
           />
         )}
 
@@ -431,7 +520,8 @@ export default function HomeScreen() {
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
                 <div className="flex items-center gap-1.5 text-xs font-medium text-fg/45">
-                  <TargetIcon size={14} className="text-blaze-label" /> Following {plan!.name}
+                  <TargetIcon size={14} className="text-blaze-label" />{" "}
+                  Following {plan!.name}
                 </div>
                 <div className="text-sm text-fg/70 mt-0.5 truncate">
                   {currentIsPlanDay || !current
@@ -440,14 +530,19 @@ export default function HomeScreen() {
                 </div>
               </div>
               <button
-                onClick={() => router.push('/plans')}
+                onClick={() => router.push("/plans")}
                 className="shrink-0 text-xs font-semibold text-blaze-label active:text-blaze-warm inline-flex items-center gap-0.5"
               >
                 Change <ChevronRight size={13} />
               </button>
             </div>
             {current && !currentIsPlanDay && (
-              <Button onClick={startPlanWorkout} variant="secondary" fullWidth className="mt-3">
+              <Button
+                onClick={startPlanWorkout}
+                variant="secondary"
+                fullWidth
+                className="mt-3"
+              >
                 <PlayIcon size={16} /> Start {planDay!.title} instead
               </Button>
             )}
@@ -462,7 +557,7 @@ export default function HomeScreen() {
           </section>
         ) : (
           <button
-            onClick={() => router.push('/plans')}
+            onClick={() => router.push("/plans")}
             className="card w-full p-4 flex items-center gap-4 text-left active:scale-[0.99] transition"
           >
             <span className="grid place-items-center h-12 w-12 rounded-xl bg-blaze/15 text-blaze-label shrink-0">
@@ -470,7 +565,9 @@ export default function HomeScreen() {
             </span>
             <div className="flex-1 min-w-0">
               <div className="font-bold">Follow a Plan</div>
-              <p className="text-sm text-fg/50">Push/Pull/Legs, Upper/Lower, Full Body and more.</p>
+              <p className="text-sm text-fg/50">
+                Push/Pull/Legs, Upper/Lower, Full Body and more.
+              </p>
             </div>
             <ChevronRight size={20} className="text-fg/35 shrink-0" />
           </button>
@@ -486,15 +583,21 @@ export default function HomeScreen() {
               label={recoveryLabel(overallReadiness)}
             />
             <div className="min-w-0 flex-1">
-              <div className="mb-2.5 text-[11px] font-extrabold uppercase tracking-[0.1em] text-fg/40">Recovery</div>
+              <div className="mb-2.5 text-[11px] font-extrabold uppercase tracking-[0.1em] text-fg/40">
+                Recovery
+              </div>
               <div className="flex flex-col gap-2">
                 {regionBars.map((b) => (
-                  <RecoveryBar key={b.label} label={b.label} pct={b.pct} tone={b.tone} />
+                  <RecoveryBar
+                    key={b.label}
+                    label={b.label}
+                    pct={b.pct}
+                    tone={b.tone}
+                  />
                 ))}
               </div>
             </div>
           </div>
-
         </section>
 
         {/* ---- Stats strip (warm first-run copy instead of three zeros) ---- */}
@@ -504,15 +607,25 @@ export default function HomeScreen() {
               <FlameIcon size={20} />
             </span>
             <div className="min-w-0">
-              <div className="font-semibold">Your first workout starts it all</div>
-              <p className="text-sm text-fg/50">Finish a session to begin your streak and track progress.</p>
+              <div className="font-semibold">
+                Your first workout starts it all
+              </div>
+              <p className="text-sm text-fg/50">
+                Finish a session to begin your streak and track progress.
+              </p>
             </div>
           </section>
         ) : (
           <section className="grid grid-cols-3 gap-2.5">
             <StatTile value={stats.thisWeek} label="Last 7 days" accent />
-            <StatTile value={stats.total} label={stats.total === 1 ? 'Workout' : 'Workouts'} />
-            <StatTile value={stats.streak} label={stats.streak === 1 ? 'Week streak' : 'Week streak'} />
+            <StatTile
+              value={stats.total}
+              label={stats.total === 1 ? "Workout" : "Workouts"}
+            />
+            <StatTile
+              value={stats.streak}
+              label={stats.streak === 1 ? "Week streak" : "Week streak"}
+            />
           </section>
         )}
 
@@ -533,10 +646,9 @@ export default function HomeScreen() {
         fresh={fresh}
         onPickPlanDay={switchToPlanDay}
         onNewWorkout={() => buildAndGo()}
-        onPickSaved={() => router.push('/history')}
+        onPickSaved={() => router.push("/history")}
         onPickMuscles={(muscles) => buildAndGo(muscles)}
       />
     </div>
-  )
+  );
 }
-
