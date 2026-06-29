@@ -3,11 +3,10 @@ import Stripe from 'https://esm.sh/stripe@17.7.0?target=deno'
 import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4'
 import { mapSubscriptionToRow, needsReconcile, LIVE_STATUSES, type PriceMap, type StripeSubLike } from '../_shared/subscription.ts'
 import {
-  checkRateLimit,
+  consumeRateLimitWithFallback,
   InMemoryRateLimitStore,
   LIMITS,
   rateLimitResponseHeaders,
-  type RateLimitResult,
 } from '../_shared/rateLimit.ts'
 import { secretEquals } from '../_shared/secrets.ts'
 
@@ -30,7 +29,8 @@ function priceMap(): PriceMap | null {
 
 const BATCH_LIMIT = 200
 
-// Per-instance fixed-window limiter (one Map per cold start; see spec §11 on warm-instance scope).
+// Per-instance fixed-window limiter — fallback only. The primary limiter is the shared Postgres bucket
+// via consumeRateLimitWithFallback(), so the budget is not diluted across warm instances.
 const rateStore = new InMemoryRateLimitStore()
 
 /**
@@ -58,18 +58,31 @@ function makeClients(): { stripe: Stripe; admin: SupabaseClient; prices: PriceMa
   return { stripe, admin: createClient(url, serviceKey), prices }
 }
 
+/** Service-role client for the global pre-auth rate limiter. Kept separate from makeClients() so a
+ * malformed flood is rejected before any Stripe client is built. */
+function makeRateLimitClient(): SupabaseClient | null {
+  const url = Deno.env.get('SUPABASE_URL')
+  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+  return url && serviceKey ? createClient(url, serviceKey) : null
+}
+
 Deno.serve(async (req) => {
   if (req.method !== 'POST') return new Response('method not allowed', { status: 405 })
 
-  // Coarse IP pre-filter BEFORE the shared-secret check, so an unauthenticated flood probing the
-  // endpoint is rejected cheaply. Fail-open on a store error (a dropped reconcile run is benign — the
-  // next cron run is the backstop — but we never gratuitously block a legitimate invocation).
-  let rl: RateLimitResult | null
-  try {
-    rl = await checkRateLimit(rateStore, 'reconcile:' + clientIp(req), LIMITS.PUBLIC_IP, Date.now())
-  } catch {
-    rl = null
-  }
+  // Coarse IP pre-filter BEFORE the shared-secret check. Fail-open on a limiter error (a dropped
+  // reconcile run is benign — the next cron run is the backstop — but we never gratuitously block a
+  // legitimate invocation).
+  const rl = await consumeRateLimitWithFallback(
+    makeRateLimitClient(),
+    rateStore,
+    'reconcile:' + clientIp(req),
+    LIMITS.PUBLIC_IP,
+    Date.now(),
+    {
+      onPrimaryError: (e) =>
+        console.warn('[reconcile] rate-limit RPC failed, falling back to in-memory store', String(e)),
+    },
+  )
   if (rl && !rl.allowed) {
     return new Response('rate limited', { status: 429, headers: rateLimitResponseHeaders(rl) })
   }

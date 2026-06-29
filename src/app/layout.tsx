@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from 'next'
+import { headers } from 'next/headers'
 import { Archivo, Hanken_Grotesk } from 'next/font/google'
 import { AntdRegistry } from '@ant-design/nextjs-registry'
 import './globals.css'
@@ -91,13 +92,15 @@ S.setProperty('--color-accent-label',d?sh(fill,0.32):fill);
 S.setProperty('--color-on-accent',d?a[3]:a[5]);
 }catch(e){document.documentElement.classList.add('dark')}})()`
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const nonce = (await headers()).get('x-nonce') ?? undefined
+
   // suppressHydrationWarning on <html>: the no-flash script adds the dark/light class before hydration,
   // which would otherwise mismatch the server-rendered className (font variables only).
   return (
     <html lang="en" className={`${archivo.variable} ${hanken.variable}`} suppressHydrationWarning>
       <head>
-        <script dangerouslySetInnerHTML={{ __html: noFlashTheme }} />
+        <script nonce={nonce} dangerouslySetInnerHTML={{ __html: noFlashTheme }} />
       </head>
       <body className="font-sans">
         <GlobalErrorTracker />

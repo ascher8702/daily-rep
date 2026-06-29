@@ -1,7 +1,12 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import Stripe from 'https://esm.sh/stripe@17.7.0?target=deno'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4'
-import { checkRateLimit, InMemoryRateLimitStore, LIMITS, rateLimitResponseHeaders } from '../_shared/rateLimit.ts'
+import {
+  consumeRateLimitWithFallback,
+  InMemoryRateLimitStore,
+  LIMITS,
+  rateLimitResponseHeaders,
+} from '../_shared/rateLimit.ts'
 import { corsHeaders } from '../_shared/cors.ts'
 
 /**
@@ -12,7 +17,8 @@ import { corsHeaders } from '../_shared/cors.ts'
  * mirror the flag onto the local row so the UI reflects it instantly (the webhook later confirms).
  */
 
-// Per-instance fixed-window limiter (one Map per cold start; see spec §11 on warm-instance scope).
+// Per-instance fixed-window limiter — fallback only. The primary limiter is the shared Postgres bucket
+// via consumeRateLimitWithFallback(), so the budget is not diluted across warm instances.
 const rateStore = new InMemoryRateLimitStore()
 
 Deno.serve(async (req) => {
@@ -40,16 +46,27 @@ Deno.serve(async (req) => {
     if (uErr || !user) return json({ error: 'unauthorized' }, 401)
     const uid = user.id
 
+    const admin = createClient(url, service)
+
     // Rate-limit authenticated abuse before any Stripe/DB work (anonymous floods are stopped by 401 above).
-    const rl = await checkRateLimit(rateStore, 'auto-renew:' + uid, LIMITS.GATED_WRITE, Date.now())
-    if (!rl.allowed) {
+    const rl = await consumeRateLimitWithFallback(
+      admin,
+      rateStore,
+      'auto-renew:' + uid,
+      LIMITS.GATED_WRITE,
+      Date.now(),
+      {
+        onPrimaryError: (e) =>
+          console.warn('[set-auto-renew] rate-limit RPC failed, falling back to in-memory store', String(e)),
+      },
+    )
+    if (rl && !rl.allowed) {
       return new Response(JSON.stringify({ error: 'rate_limited' }), {
         status: 429,
         headers: { ...cors, 'Content-Type': 'application/json', ...rateLimitResponseHeaders(rl) },
       })
     }
 
-    const admin = createClient(url, service)
     const { data: row } = await admin
       .from('subscriptions')
       .select('stripe_subscription_id')
