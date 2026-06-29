@@ -29,7 +29,12 @@ export function RecoveryRing({ pct, tone, label, size = 96 }: RecoveryRingProps)
     >
       <div className="absolute inset-[9px] grid place-items-center rounded-full bg-card">
         <div className="text-center">
-          <div className="font-display text-[26px] font-black leading-none" style={{ color: fill }}>
+          {/* Numeral scales with ring size; the 3-digit "100%" uses a smaller size so it never overflows
+              the hollow center into the ring (at size 96: ~22px for "100%", ~26px for 1–2 digit values). */}
+          <div
+            className="font-display font-black leading-none"
+            style={{ color: fill, fontSize: Math.round(size * (p >= 100 ? 0.23 : 0.27)) }}
+          >
             {p}%
           </div>
           <div className="mt-0.5 text-[10px] font-bold uppercase tracking-wide text-fg/45">{label}</div>
