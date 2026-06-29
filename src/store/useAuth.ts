@@ -76,6 +76,8 @@ async function clearLocalAppData(): Promise<void> {
     await idbStorage.removeItem(PERSIST_KEY)
     try {
       localStorage.removeItem(PERSIST_KEY)
+      // Per-device trial-banner dismissal — clear so a different account on this device doesn't inherit it.
+      localStorage.removeItem('daily-rep-trial-banner')
     } catch {
       /* localStorage unavailable — IndexedDB removal above is the source of truth */
     }

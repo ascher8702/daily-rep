@@ -37,6 +37,57 @@ export const PRICING: Record<PlanId, {
 
 export const TRIAL_DAYS = 30
 
+/** Trial days-left threshold at/below which the dismissible Home nudge re-asserts itself (last-chance). */
+export const TRIAL_BANNER_URGENT_DAYS = 2
+
+/** localStorage key holding the `trialDaysLeft` value at the moment the banner was last dismissed.
+ *  This is a per-DEVICE UI preference — deliberately NOT part of the synced Zustand blob. */
+export const TRIAL_BANNER_DISMISS_KEY = 'daily-rep-trial-banner'
+
+/**
+ * Should the dismissible free-trial nudge be visible? Pure — exported for unit tests.
+ *
+ * `dismissedAtDaysLeft` is the `trialDaysLeft` captured AT the moment of the last dismissal, or null if
+ * never dismissed. A dismissal made OUTSIDE the urgent window (> 2 days) is overridden once the trial
+ * enters the urgent window (<= 2 days) so the banner returns once as a last-chance reminder; a dismissal
+ * made INSIDE the urgent window keeps it hidden (so the X always works in that final window).
+ */
+export function shouldShowTrialBanner(
+  inTrial: boolean,
+  daysLeft: number,
+  dismissedAtDaysLeft: number | null,
+): boolean {
+  return (
+    inTrial &&
+    (dismissedAtDaysLeft === null ||
+      (daysLeft <= TRIAL_BANNER_URGENT_DAYS && dismissedAtDaysLeft > TRIAL_BANNER_URGENT_DAYS))
+  )
+}
+
+/** Read the persisted dismissal marker (days-left at dismissal time). Returns null when never dismissed
+ *  or when the stored value is absent/corrupt/non-numeric. Guarded for SSR. */
+export function readTrialBannerDismissal(): number | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = window.localStorage.getItem(TRIAL_BANNER_DISMISS_KEY)
+    if (raw === null) return null
+    const n = Number(raw)
+    return Number.isFinite(n) ? n : null
+  } catch {
+    return null
+  }
+}
+
+/** Persist the days-left at dismissal time so the banner stays hidden per the re-appear rule. Guarded for SSR. */
+export function writeTrialBannerDismissal(daysLeft: number): void {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(TRIAL_BANNER_DISMISS_KEY, String(daysLeft))
+  } catch {
+    /* storage unavailable — banner simply won't persist its dismissal this device */
+  }
+}
+
 /**
  * Hard cap on how long we'll wait for the subscription read before treating it as failed. A stalled
  * (not failed) connection never settles `.maybeSingle()`, which would otherwise strand the entitlement
