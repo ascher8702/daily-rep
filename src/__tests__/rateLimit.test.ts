@@ -7,6 +7,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import {
   checkRateLimit,
+  consumeRateLimitWithFallback,
   rateLimitResponseHeaders,
   InMemoryRateLimitStore,
   LIMITS,
@@ -14,6 +15,7 @@ import {
   type RateLimitEntry,
   type RateLimitResult,
   type RateLimitStore,
+  type RpcRunner,
 } from '../../supabase/functions/_shared/rateLimit'
 
 // Literal configs used throughout — kept small so the boundaries are obvious.
@@ -284,5 +286,54 @@ describe('LIMITS — named budgets are the single source of truth', () => {
     const fourth = await checkRateLimit(store, 'delete-account:uid', LIMITS.DELETE_ACCOUNT, 4000)
     expect(fourth.allowed).toBe(false)
     expect(fourth.retryAfterMs).toBe(600_000 - 4000)
+  })
+})
+
+describe('consumeRateLimitWithFallback', () => {
+  function rpc(data: boolean, error: unknown = null): { runner: RpcRunner; calls: number } {
+    const state = {
+      calls: 0,
+      runner: {
+        rpc(fn: string, args: Record<string, unknown>) {
+          state.calls++
+          expect(fn).toBe('consume_rate_limit')
+          expect(args).toEqual({ p_key: 'checkout:uid', p_limit: 10, p_window_seconds: 60 })
+          return Promise.resolve({ data, error })
+        },
+      } satisfies RpcRunner,
+    }
+    return state
+  }
+
+  it('uses the Postgres RPC when available', async () => {
+    const primary = rpc(true)
+    const fallback = new InMemoryRateLimitStore()
+    const r = await consumeRateLimitWithFallback(
+      primary.runner,
+      fallback,
+      'checkout:uid',
+      LIMITS.GATED_WRITE,
+      1000,
+    )
+
+    expect(primary.calls).toBe(1)
+    expect(r?.allowed).toBe(true)
+    expect(fallback.size()).toBe(0)
+  })
+
+  it('falls back to the in-memory store when the RPC fails', async () => {
+    const primary = rpc(false, { message: 'down' })
+    const fallback = new InMemoryRateLimitStore()
+    const r = await consumeRateLimitWithFallback(
+      primary.runner,
+      fallback,
+      'checkout:uid',
+      LIMITS.GATED_WRITE,
+      1000,
+    )
+
+    expect(primary.calls).toBe(1)
+    expect(r?.allowed).toBe(true)
+    expect(fallback.size()).toBe(1)
   })
 })

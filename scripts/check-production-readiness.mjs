@@ -35,6 +35,20 @@ const checks = [
       !s.includes('\n  automaticVercelMonitors:'),
   },
   {
+    label: 'Production CSP uses a per-request script nonce and no script unsafe-inline',
+    file: 'src/middleware.ts',
+    test: (s) =>
+      s.includes("`script-src 'self' 'nonce-${n}' https://challenges.cloudflare.com`") &&
+      !/script-src[^;\n]*unsafe-inline/.test(s),
+  },
+  {
+    label: 'No-flash theme bootstrap carries the middleware CSP nonce',
+    file: 'src/app/layout.tsx',
+    test: (s) =>
+      s.includes("headers()).get('x-nonce')") &&
+      s.includes('<script nonce={nonce} dangerouslySetInnerHTML={{ __html: noFlashTheme }} />'),
+  },
+  {
     label: 'Sentry DSNs are configured only through environment variables',
     file: 'src/instrumentation-client.ts',
     test: (s) =>

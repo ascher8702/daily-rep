@@ -6,6 +6,7 @@ import { assertEquals } from 'https://deno.land/std@0.224.0/assert/mod.ts'
 import { assertRejects } from 'https://deno.land/std@0.224.0/assert/assert_rejects.ts'
 import {
   checkRateLimit,
+  consumeRateLimitWithFallback,
   rateLimitResponseHeaders,
   InMemoryRateLimitStore,
   LIMITS,
@@ -148,4 +149,22 @@ Deno.test('PostgresRateLimitStore: get/set are unsupported (atomic via consume o
   const store = new PostgresRateLimitStore(runner)
   await assertRejects(() => store.get('k'), Error)
   await assertRejects(() => store.set('k', { count: 1, windowStart: 0 }), Error)
+})
+
+Deno.test('consumeRateLimitWithFallback: uses the Postgres RPC when available', async () => {
+  const { runner, calls } = fakeRpc(() => ({ data: true, error: null }))
+  const fallback = new InMemoryRateLimitStore()
+  const r = await consumeRateLimitWithFallback(runner, fallback, 'delete-account:u1', LIMITS.DELETE_ACCOUNT, 0)
+  assertEquals(r?.allowed, true)
+  assertEquals(calls.length, 1)
+  assertEquals(fallback.size(), 0)
+})
+
+Deno.test('consumeRateLimitWithFallback: falls back to in-memory when the RPC fails', async () => {
+  const { runner, calls } = fakeRpc(() => ({ data: null, error: { message: 'rpc down' } }))
+  const fallback = new InMemoryRateLimitStore()
+  const r = await consumeRateLimitWithFallback(runner, fallback, 'delete-account:u1', LIMITS.DELETE_ACCOUNT, 0)
+  assertEquals(r?.allowed, true)
+  assertEquals(calls.length, 1)
+  assertEquals(fallback.size(), 1)
 })

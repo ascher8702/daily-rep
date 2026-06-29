@@ -122,6 +122,33 @@ export class PostgresRateLimitStore implements RateLimitStore {
 }
 
 /**
+ * Prefer the cross-instance Postgres bucket when a service-role RPC client is available, then fall back
+ * to the per-instance store. If both limiters fail, return null so callers can apply their existing
+ * fail-open posture: rate limiting is abuse mitigation, not a hard auth invariant.
+ */
+export async function consumeRateLimitWithFallback(
+  primary: RpcRunner | null | undefined,
+  fallback: RateLimitStore,
+  key: string,
+  config: RateLimitConfig,
+  now: number,
+  opts: { onPrimaryError?: (error: unknown) => void } = {},
+): Promise<RateLimitResult | null> {
+  if (primary) {
+    try {
+      return await new PostgresRateLimitStore(primary).consume(key, config, now)
+    } catch (e) {
+      opts.onPrimaryError?.(e)
+    }
+  }
+  try {
+    return await checkRateLimit(fallback, key, config, now)
+  } catch {
+    return null
+  }
+}
+
+/**
  * Pure fixed-window decision. Reads the key's entry, decides allow/deny for THIS hit, writes the
  * updated entry back, and returns the result. `now` is epoch ms (injectable clock) and is used raw — no
  * rounding. A hit that lands on/after `windowStart + windowMs` starts a fresh window (count = 1). Store
