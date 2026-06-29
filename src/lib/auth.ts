@@ -39,6 +39,43 @@ export function passwordIssue(password: string): string | null {
   return null
 }
 
+/** Junk that supabase-js / JSON.stringify can leave behind as an "error message" — never show these. */
+const JUNK_MESSAGES = new Set(['{}', '[]', '[object Object]', 'null', 'undefined'])
+
+/**
+ * Turn a Supabase auth error into a user-friendly, NON-EMPTY message safe to render in the Auth
+ * screen's alert box. A live test showed an email-send 500 surfacing an opaque message that rendered
+ * literally as "{}", so we (a) map known cases by error `code`/`message`, (b) pass through a sensible
+ * human-readable `message`, and (c) otherwise fall back to a generic notice — never raw junk. Pure and
+ * dependency-free; reads `.code`/`.message` defensively because the shape isn't guaranteed.
+ */
+export function friendlyAuthError(error: unknown): string {
+  const err = (error ?? {}) as { code?: unknown; message?: unknown }
+  const code = typeof err.code === 'string' ? err.code.toLowerCase() : ''
+  const rawMessage = typeof err.message === 'string' ? err.message : ''
+  const message = rawMessage.toLowerCase()
+
+  const has = (s: string) => code.includes(s) || message.includes(s)
+
+  if (has('invalid login credentials') || has('invalid_credentials')) {
+    return 'Incorrect email or password.'
+  }
+  if (has('email not confirmed') || has('email_not_confirmed')) {
+    return 'Please confirm your email first - check your inbox.'
+  }
+  if (has('over_email_send_rate_limit') || has('unexpected_failure') || message.includes('sending')) {
+    return 'We could not send that email right now. Please try again in a few minutes.'
+  }
+  if (has('user already registered') || has('user_already_exists')) {
+    return 'An account with this email already exists. Try signing in.'
+  }
+
+  const trimmed = rawMessage.trim()
+  if (trimmed.length > 1 && !JUNK_MESSAGES.has(trimmed)) return trimmed
+
+  return 'Something went wrong. Please try again.'
+}
+
 /**
  * Best-effort display name from an email's local-part, to prefill onboarding:
  * "jane.doe@x.com" → "Jane Doe", "vlad8702@gmail.com" → "Vlad". Returns '' when nothing usable

@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { supabase } from '../lib/supabase'
 import { clearSyncMetadata, startSync, stopSync } from '../lib/sync'
-import { emailValid, passwordIssue, normalizeEmail } from '../lib/auth'
+import { emailValid, passwordIssue, normalizeEmail, friendlyAuthError } from '../lib/auth'
 import { reportError } from '../lib/telemetry'
 import { idbStorage } from '../lib/idbStorage'
 import { runAuthBootstrap } from './authBootstrap'
@@ -142,7 +142,7 @@ export const useAuth = create<AuthState>((set) => ({
       password,
       options: captchaToken ? { captchaToken } : undefined,
     })
-    if (error) return error.message
+    if (error) return friendlyAuthError(error)
     // when email confirmation is required, no session is returned yet
     if (!data.session) {
       set({ pending: 'Check your email to confirm your account, then sign in.' })
@@ -159,7 +159,7 @@ export const useAuth = create<AuthState>((set) => ({
       password,
       options: captchaToken ? { captchaToken } : undefined,
     })
-    if (error) return error.message
+    if (error) return friendlyAuthError(error)
     return null
   },
 
@@ -175,7 +175,7 @@ export const useAuth = create<AuthState>((set) => ({
         redirectTo: typeof window !== 'undefined' ? window.location.origin : undefined,
       },
     })
-    if (error) return error.message
+    if (error) return friendlyAuthError(error)
     return null
   },
 
@@ -192,7 +192,7 @@ export const useAuth = create<AuthState>((set) => ({
         captchaToken,
       },
     })
-    if (error) return error.message
+    if (error) return friendlyAuthError(error)
     set({ pending: 'Check your email for a sign-in link to finish signing in.' })
     return null
   },
@@ -207,7 +207,7 @@ export const useAuth = create<AuthState>((set) => ({
       redirectTo: typeof window !== 'undefined' ? `${window.location.origin}/reset-password` : undefined,
       captchaToken,
     })
-    if (error) return error.message
+    if (error) return friendlyAuthError(error)
     return null
   },
 
@@ -221,7 +221,7 @@ export const useAuth = create<AuthState>((set) => ({
       { email },
       { emailRedirectTo: typeof window !== 'undefined' ? window.location.origin : undefined },
     )
-    if (error) return error.message
+    if (error) return friendlyAuthError(error)
     return null
   },
 
@@ -230,7 +230,7 @@ export const useAuth = create<AuthState>((set) => ({
     const issue = passwordIssue(newPassword)
     if (issue) return issue
     const { error } = await supabase.auth.updateUser({ password: newPassword })
-    if (error) return error.message
+    if (error) return friendlyAuthError(error)
     // password set — leave any recovery session and continue as a normally signed-in user
     set({ recovering: false })
     return null
