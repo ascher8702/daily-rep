@@ -31,10 +31,18 @@ const cryptoProvider = Stripe.createSubtleCryptoProvider()
 // Per-instance fixed-window limiter (one Map per cold start; see spec §11 on warm-instance scope).
 const rateStore = new InMemoryRateLimitStore()
 
-/** Client IP from the proxy headers: first x-forwarded-for hop, else x-real-ip, else 'unknown'. */
+/**
+ * Client IP for per-IP rate limiting. Prefer the LAST x-forwarded-for hop (the one the platform proxy
+ * appends, which a client cannot forge) over the first (client-claimed) hop — otherwise a spoofed
+ * `X-Forwarded-For: <random>` header lets an attacker reset their per-IP budget on every request. Falls
+ * back to x-real-ip, then 'unknown'.
+ */
 function clientIp(req: Request): string {
   const fwd = req.headers.get('x-forwarded-for')
-  if (fwd) return fwd.split(',')[0].trim()
+  if (fwd) {
+    const hops = fwd.split(',').map((h) => h.trim()).filter(Boolean)
+    if (hops.length > 0) return hops[hops.length - 1]
+  }
   return req.headers.get('x-real-ip') ?? 'unknown'
 }
 
@@ -140,6 +148,40 @@ Deno.serve(async (req) => {
     return new Response('invalid signature', { status: 400 })
   }
 
+  // Idempotency: CLAIM the (signature-verified) event id BEFORE processing. Stripe retries on any non-2xx
+  // and can deliver the same event more than once, so claim the id atomically with insert-on-conflict-do-
+  // nothing. If the row already existed (a redelivery), short-circuit with 200 — already handled. On a DB
+  // error we FAIL OPEN (proceed to process): handlers are convergent/idempotent, so re-processing is safe,
+  // and a ledger outage must not drop a real billing event.
+  //
+  // `claimedEvent` records whether THIS request actually inserted the row. It's load-bearing: if the
+  // handler below FAILS (returns 500), we must RELEASE the claim so Stripe's retry can reprocess —
+  // otherwise a genuinely-failed event (e.g. the first checkout.session.completed for a brand-new payer
+  // whose syncSubscription threw transiently) stays marked processed forever, suppressing every retry,
+  // and the customer is charged but never provisioned. We only release a claim we created (not one that
+  // already existed, and not the fail-open path where no claim was made).
+  let claimedEvent = false
+  try {
+    const { data: inserted, error: ledgerErr } = await admin
+      .from('stripe_events')
+      .upsert({ event_id: event.id, type: event.type }, { onConflict: 'event_id', ignoreDuplicates: true })
+      .select('event_id')
+    if (ledgerErr) {
+      console.error('[stripe-webhook] idempotency ledger write failed (processing anyway)', ledgerErr.message)
+    } else if (!inserted || inserted.length === 0) {
+      // No row returned from an ignoreDuplicates upsert ⇒ the id already existed ⇒ duplicate delivery.
+      console.log('[stripe-webhook] duplicate event ignored', { id: event.id, type: event.type })
+      return new Response(JSON.stringify({ received: true, duplicate: true }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    } else {
+      claimedEvent = true // we inserted the row this request → ours to release on handler failure
+    }
+  } catch (e) {
+    console.error('[stripe-webhook] idempotency check error (processing anyway)', e)
+  }
+
   try {
     switch (event.type) {
       case 'checkout.session.completed': {
@@ -187,6 +229,22 @@ Deno.serve(async (req) => {
         break
     }
   } catch (e) {
+    // The handler failed. RELEASE the idempotency claim we made above so Stripe's retry can REPROCESS
+    // this event — otherwise the pre-claimed id would short-circuit every retry with a 200 'duplicate'
+    // and a genuinely-failed event (the worst case: the first event for a new payer) would never recover,
+    // and the reconcile safety net can't help because no local subscriptions row was ever created. Only
+    // delete a claim THIS request created; a duplicate already returned 200 above, and the fail-open path
+    // never claimed. A best-effort delete: if it fails, we still return 500 (Stripe retries regardless),
+    // and at worst the retry hits the duplicate short-circuit — strictly no worse than the pre-fix bug.
+    if (claimedEvent) {
+      const { error: releaseErr } = await admin.from('stripe_events').delete().eq('event_id', event.id)
+      if (releaseErr) {
+        console.error('[stripe-webhook] failed to release idempotency claim after handler error', {
+          id: event.id,
+          msg: releaseErr.message,
+        })
+      }
+    }
     // Return non-2xx so Stripe retries with backoff. Don't echo the raw exception.
     console.error('[stripe-webhook] handler error', e)
     return new Response('handler error', { status: 500 })

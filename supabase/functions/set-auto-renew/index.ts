@@ -2,6 +2,7 @@ import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import Stripe from 'https://esm.sh/stripe@17.7.0?target=deno'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4'
 import { checkRateLimit, InMemoryRateLimitStore, LIMITS, rateLimitResponseHeaders } from '../_shared/rateLimit.ts'
+import { corsHeaders } from '../_shared/cors.ts'
 
 /**
  * Toggle auto-renew for the signed-in caller's subscription. body: { autoRenew: boolean }.
@@ -11,16 +12,11 @@ import { checkRateLimit, InMemoryRateLimitStore, LIMITS, rateLimitResponseHeader
  * mirror the flag onto the local row so the UI reflects it instantly (the webhook later confirms).
  */
 
-const cors = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-}
-
 // Per-instance fixed-window limiter (one Map per cold start; see spec §11 on warm-instance scope).
 const rateStore = new InMemoryRateLimitStore()
 
 Deno.serve(async (req) => {
+  const cors = corsHeaders(req)
   const json = (body: unknown, status = 200) =>
     new Response(JSON.stringify(body), { status, headers: { ...cors, 'Content-Type': 'application/json' } })
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })

@@ -2,6 +2,7 @@ import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import Stripe from 'https://esm.sh/stripe@17.7.0?target=deno'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4'
 import { checkRateLimit, InMemoryRateLimitStore, LIMITS, rateLimitResponseHeaders } from '../_shared/rateLimit.ts'
+import { corsHeaders } from '../_shared/cors.ts'
 
 /**
  * Creates a Stripe Checkout Session (subscription mode) for the signed-in caller and returns its URL.
@@ -10,12 +11,6 @@ import { checkRateLimit, InMemoryRateLimitStore, LIMITS, rateLimitResponseHeader
  * user still has time left on their app-granted free trial, carry that trial over to Stripe via
  * `subscription_data.trial_end` so subscribing early never shortens the trial.
  */
-
-const cors = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-}
 
 const PRICES: Record<string, string | undefined> = {
   monthly: Deno.env.get('STRIPE_PRICE_MONTHLY') || undefined,
@@ -33,6 +28,7 @@ const LIVE_STATUSES = ['active', 'trialing', 'past_due']
 const rateStore = new InMemoryRateLimitStore()
 
 Deno.serve(async (req) => {
+  const cors = corsHeaders(req)
   const json = (body: unknown, status = 200) =>
     new Response(JSON.stringify(body), { status, headers: { ...cors, 'Content-Type': 'application/json' } })
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })

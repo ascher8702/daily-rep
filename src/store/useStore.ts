@@ -591,8 +591,31 @@ function repairExercise(ex: unknown): WorkoutExercise | null {
   const tr = e.targetReps
   const goodTargetReps =
     Array.isArray(tr) && tr.length === 2 && tr.every((n) => typeof n === 'number' && Number.isFinite(n))
-  const repaired = goodTargetReps ? e : { ...e, targetReps: DEFAULT_TARGET_REPS }
+  const withTargetReps = goodTargetReps ? e : { ...e, targetReps: DEFAULT_TARGET_REPS }
+  const repaired = sanitizeSetValues(withTargetReps)
   return validExercise(repaired) ? repaired : null
+}
+
+/**
+ * Coerce every set's NUMERIC VALUES on a persisted exercise so a corrupt blob can't inject a
+ * NaN/negative/string weight or reps that later poisons prescribe() (Math.max over set weights →
+ * NaN → NaN-prescribed loads) or volume/e1RM math. validExercise already guarantees each set is a
+ * non-null object; here we clamp weight → finite ≥0 and reps → finite ≥0 integer (matching
+ * sanitizeSetPatch's bounds), leaving id/done/warmup/rpe untouched. Returns a new exercise only when
+ * a set actually needed repair, so the common (clean) hydration path stays referentially stable.
+ */
+function sanitizeSetValues(e: WorkoutExercise): WorkoutExercise {
+  if (!Array.isArray(e.sets)) return e
+  let changed = false
+  const sets = e.sets.map((s) => {
+    if (!s || typeof s !== 'object') return s // a null/garbage element is caught later by validExercise
+    const weight = sanitizeNumber(s.weight, 9999)
+    const reps = Math.round(sanitizeNumber(s.reps, 999))
+    if (weight === s.weight && reps === s.reps) return s
+    changed = true
+    return { ...s, weight, reps }
+  })
+  return changed ? { ...e, sets } : e
 }
 
 /**
@@ -608,6 +631,87 @@ function sanitizeWorkout(w: unknown): Workout | null {
     .filter((e): e is WorkoutExercise => e !== null)
   if (exercises.length === 0) return null // nothing readable left → not a usable session
   return { ...(w as Workout), exercises }
+}
+
+/**
+ * Sanitize a candidate `current` session AND require the top-level shape the screens read (.focus /
+ * .title / .status) so a corrupt current can't crash them — returns null otherwise. The repair (keep
+ * the session as long as ≥1 exercise survives) is shared by hydration and cloud-adopt.
+ */
+function sanitizeCurrent(w: unknown): Workout | null {
+  const sanitized = sanitizeWorkout(w)
+  return sanitized &&
+    Array.isArray(sanitized.focus) &&
+    typeof sanitized.title === 'string' &&
+    typeof sanitized.status === 'string'
+    ? sanitized
+    : null
+}
+
+/**
+ * How much real, in-progress work a session carries — the count of sets the user has actually logged
+ * (a recorded weight/reps or a completed flag). Used to decide which `current` to keep when a cloud
+ * adopt collides with a local in-progress session: the side with MORE logged work wins, so a freshly
+ * pulled (often null / pristine) cloud current never destroys real reps logged on this device.
+ */
+export function loggedSetCount(w: Workout | null): number {
+  if (!w || !Array.isArray(w.exercises)) return 0
+  let n = 0
+  for (const e of w.exercises) {
+    if (!Array.isArray(e.sets)) continue
+    for (const s of e.sets) {
+      if (s && typeof s === 'object' && (s.done || (s.weight ?? 0) > 0 || (s.reps ?? 0) > 0)) n += 1
+    }
+  }
+  return n
+}
+
+/**
+ * Pick which in-progress `current` session survives a merge. `persisted` is the blob/cloud side,
+ * `local` the in-memory side. `mergedWorkouts` is the already-unioned completed-history list and
+ * `tombstoned` the merged delete-tombstone set, used to reject a RESURRECTED session (see below).
+ *  - HYDRATION (local current is null — the defaults AppState) → keep the persisted session, so a
+ *    reload restores exactly the session the user was in (byte-identical to the old wholesale take).
+ *  - ADOPT (a cloud pull racing a local in-progress session) → keep whichever side has MORE logged
+ *    sets; on a tie, prefer the newer (later startedAt), then the local side. This stops a pulled
+ *    cloud current (commonly null after the session was committed elsewhere, or pristine) from wiping
+ *    out real reps the user is mid-logging on THIS device. Committed workouts[] are unioned
+ *    separately, so this only ever arbitrates the single live session, never history.
+ *  - RESURRECTION GUARD: if the chosen current's id already appears in the merged completed
+ *    workouts[] OR in the tombstone set, the session was FINISHED (moved into history) or DELETED on
+ *    another device — keeping the local in-progress copy would revive an already-committed session and
+ *    let the user re-log a duplicate. Drop it (return null). The "keep local on cloud=null" branch
+ *    cannot otherwise distinguish "cloud never had this session" from "cloud finished it", so this
+ *    cross-reference against the merged history/tombstones is what makes that branch safe.
+ */
+function pickCurrent(
+  persisted: unknown,
+  local: Workout | null,
+  mergedWorkouts: Workout[] = [],
+  tombstoned: Iterable<string> = [],
+): Workout | null {
+  const a = sanitizeCurrent(persisted)
+  const b = sanitizeCurrent(local)
+  const chosen = pickLiveCurrent(a, b)
+  if (!chosen) return null
+  // A session that already lives in completed history (finished elsewhere) or in the tombstone set
+  // (deleted elsewhere) must not be resurrected as a live current — that's a finished/deleted session.
+  const drop = new Set(tombstoned)
+  if (drop.has(chosen.id) || mergedWorkouts.some((w) => w.id === chosen.id)) return null
+  return chosen
+}
+
+/** The raw more-progressed-side arbitration, BEFORE the resurrection guard (kept separate so the guard
+ *  reads clearly). HYDRATION (local null) keeps the persisted side; ADOPT keeps whichever logged more,
+ *  tie → newer startedAt, then local. */
+function pickLiveCurrent(a: Workout | null, b: Workout | null): Workout | null {
+  if (!a) return b
+  if (!b) return a
+  const an = loggedSetCount(a)
+  const bn = loggedSetCount(b)
+  if (an !== bn) return an > bn ? a : b
+  // tie on logged work → prefer the more-recently-started session, else the local side
+  return (b.startedAt ?? 0) >= (a.startedAt ?? 0) ? b : a
 }
 
 const VALID_GOALS: Goal[] = ['strength', 'hypertrophy', 'endurance', 'powerlifting', 'general']
@@ -857,34 +961,32 @@ export function mergePersisted(persisted: unknown, current: AppState): AppState 
   // customPlans. This asymmetry vs deletedWorkoutIds (above) is intentional — customPlans-delete
   // convergence is deferred, so this field is shape-only for now. Do not "fix" it into a union.
   const deletedPlanIds = asStringArray(p.deletedPlanIds)
+  // Union completed workouts by id (the data-loss fix) instead of wholesale-taking the persisted side.
+  // The persisted/cloud side is passed as `a` so HYDRATION (current.workouts === []) is byte-identical
+  // to the old wholesale take; ADOPT appends local-only extras and LWW-resolves true id collisions.
+  // Each side is sanitized first (repair targetReps, drop the unsalvageable, coerce focus — as line 734
+  // always did), and tombstoned ids are subtracted so a delete isn't resurrected by a stale copy.
+  const workouts = unionWorkouts(
+    sanitizeWorkouts(p.workouts),
+    sanitizeWorkouts(current.workouts),
+    deletedWorkoutIds,
+  )
   return {
     ...current,
     ...p,
-    // Union completed workouts by id (the data-loss fix) instead of wholesale-taking the persisted side.
-    // The persisted/cloud side is passed as `a` so HYDRATION (current.workouts === []) is byte-identical
-    // to the old wholesale take; ADOPT appends local-only extras and LWW-resolves true id collisions.
-    // Each side is sanitized first (repair targetReps, drop the unsalvageable, coerce focus — as line 734
-    // always did), and tombstoned ids are subtracted so a delete isn't resurrected by a stale copy.
-    workouts: unionWorkouts(
-      sanitizeWorkouts(p.workouts),
-      sanitizeWorkouts(current.workouts),
-      deletedWorkoutIds,
-    ),
+    workouts,
     deletedWorkoutIds,
     // sanitized blob side only (reserve-only — see the deletedPlanIds comment above; NOT unioned)
     deletedPlanIds,
-    // repair the session (keep it as long as ≥1 exercise survives) rather than nulling the whole
-    // thing on a single malformed block, but still require the top-level shape the screens read
-    // (.focus / .title / .status) so a corrupt current can't crash them.
-    current: (() => {
-      const sanitized = sanitizeWorkout(p.current)
-      return sanitized &&
-        Array.isArray(sanitized.focus) &&
-        typeof sanitized.title === 'string' &&
-        typeof sanitized.status === 'string'
-        ? sanitized
-        : null
-    })(),
+    // Keep the MORE-PROGRESSED in-progress session rather than wholesale-taking the blob side. On
+    // hydration the local (defaults) current is null, so this is byte-identical to the old take of the
+    // persisted session; on cloud-adopt it stops a freshly-pulled cloud current (often null/pristine)
+    // from destroying real reps the user is mid-logging on this device. Both sides are sanitized +
+    // shape-checked (.focus / .title / .status) so a corrupt current can't crash the screens. The merged
+    // history + tombstones are passed so a session FINISHED (now in workouts[]) or DELETED elsewhere is
+    // dropped instead of resurrected as a live duplicate (the cloud-current-null branch can't tell those
+    // apart from "cloud never had it" on its own).
+    current: pickCurrent(p.current, current.current, workouts, deletedWorkoutIds),
     activePlan,
     customPlans,
     // seed per-plan progress, and ensure the currently-followed plan's live dayIndex is recorded so

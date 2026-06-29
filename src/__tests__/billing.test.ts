@@ -1,5 +1,17 @@
-import { describe, it, expect } from 'vitest'
-import { deriveEntitlement, type SubscriptionRow } from '../lib/billing'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import {
+  deriveEntitlement,
+  fetchSubscription,
+  SUBSCRIPTION_FETCH_TIMEOUT_MS,
+  type SubscriptionRow,
+} from '../lib/billing'
+
+// A controllable mock client so fetchSubscription's real timeout (B1) can be exercised: the query
+// promise is held open by the test, simulating a stalled (not failed) connection.
+const maybeSingle = vi.fn<() => Promise<{ data: SubscriptionRow | null; error: unknown }>>()
+vi.mock('../lib/supabase', () => ({
+  supabase: { from: () => ({ select: () => ({ maybeSingle }) }) },
+}))
 
 const NOW = Date.parse('2026-06-24T12:00:00Z')
 const inDays = (n: number) => new Date(NOW + n * 86_400_000).toISOString()
@@ -132,5 +144,78 @@ describe('deriveEntitlement', () => {
       NOW,
     )
     expect(e.entitled).toBe(false) // incomplete never actually paid
+  })
+
+  // everSubscribed drives "subscription ended" vs "trial ended" copy — it must imply a real payment
+  // happened, not merely that a Stripe subscription id was created during an abandoned checkout.
+  describe('everSubscribed', () => {
+    it('is true when a payment actually occurred (active sub)', () => {
+      const e = deriveEntitlement(
+        row({ status: 'active', stripe_subscription_id: 'sub_1', current_period_end: inDays(20) }),
+        NOW,
+      )
+      expect(e.everSubscribed).toBe(true)
+    })
+
+    it('is true for a canceled sub that was previously paid', () => {
+      const e = deriveEntitlement(
+        row({ status: 'canceled', stripe_subscription_id: 'sub_1', current_period_end: inDays(-2) }),
+        NOW,
+      )
+      expect(e.everSubscribed).toBe(true)
+    })
+
+    it('is FALSE for a never-completed checkout (incomplete / incomplete_expired / unpaid)', () => {
+      for (const status of ['incomplete', 'incomplete_expired', 'unpaid'] as const) {
+        const e = deriveEntitlement(row({ status, stripe_subscription_id: 'sub_1' }), NOW)
+        expect(e.everSubscribed, status).toBe(false)
+      }
+    })
+
+    it('does not change access (entitled) for a never-paid status', () => {
+      // guard: B3 must NOT alter the access verdict, only the everSubscribed copy flag
+      const e = deriveEntitlement(
+        row({ status: 'incomplete', stripe_subscription_id: 'sub_1', current_period_end: inDays(12) }),
+        NOW,
+      )
+      expect(e.everSubscribed).toBe(false)
+      expect(e.entitled).toBe(false)
+    })
+  })
+})
+
+describe('fetchSubscription (B1 — never hangs forever)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    maybeSingle.mockReset()
+  })
+  afterEach(() => vi.useRealTimers())
+
+  it('REJECTS when the query never settles, within the timeout', async () => {
+    // A stalled connection: maybeSingle() returns a promise that never resolves or rejects.
+    maybeSingle.mockReturnValue(new Promise(() => {}))
+
+    const p = fetchSubscription()
+    const settled = p.then(
+      () => 'resolved',
+      () => 'rejected',
+    )
+
+    // Before the timeout: still pending.
+    await vi.advanceTimersByTimeAsync(SUBSCRIPTION_FETCH_TIMEOUT_MS - 1)
+    let raced = await Promise.race([settled, Promise.resolve('pending')])
+    expect(raced).toBe('pending')
+
+    // At/after the timeout: the fetch rejects (so refresh()'s catch can fail closed and un-gate).
+    await vi.advanceTimersByTimeAsync(1)
+    raced = await Promise.race([settled, Promise.resolve('pending')])
+    expect(raced).toBe('rejected')
+  })
+
+  it('resolves normally (and clears the timer) when the query settles in time', async () => {
+    maybeSingle.mockResolvedValue({ data: null, error: null })
+    await expect(fetchSubscription()).resolves.toBeNull()
+    // No pending timers left dangling after a fast success.
+    expect(vi.getTimerCount()).toBe(0)
   })
 })

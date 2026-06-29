@@ -9,6 +9,7 @@ import {
   rateLimitResponseHeaders,
   type RateLimitResult,
 } from '../_shared/rateLimit.ts'
+import { secretEquals } from '../_shared/secrets.ts'
 
 /**
  * Scheduled reconciliation: the safety net for MISSED webhooks. If Stripe's
@@ -32,10 +33,18 @@ const BATCH_LIMIT = 200
 // Per-instance fixed-window limiter (one Map per cold start; see spec §11 on warm-instance scope).
 const rateStore = new InMemoryRateLimitStore()
 
-/** Client IP from the proxy headers: first x-forwarded-for hop, else x-real-ip, else 'unknown'. */
+/**
+ * Client IP for per-IP rate limiting. Prefer the LAST x-forwarded-for hop (the one the platform proxy
+ * appends, which a client cannot forge) over the first (client-claimed) hop — otherwise a spoofed
+ * `X-Forwarded-For: <random>` header lets an attacker reset their per-IP budget on every request. Falls
+ * back to x-real-ip, then 'unknown'.
+ */
 function clientIp(req: Request): string {
   const fwd = req.headers.get('x-forwarded-for')
-  if (fwd) return fwd.split(',')[0].trim()
+  if (fwd) {
+    const hops = fwd.split(',').map((h) => h.trim()).filter(Boolean)
+    if (hops.length > 0) return hops[hops.length - 1]
+  }
   return req.headers.get('x-real-ip') ?? 'unknown'
 }
 
@@ -65,9 +74,10 @@ Deno.serve(async (req) => {
     return new Response('rate limited', { status: 429, headers: rateLimitResponseHeaders(rl) })
   }
 
-  // Shared-secret auth (constant work; the secret must be configured).
+  // Shared-secret auth. Constant-time comparison (see _shared/secrets.ts) so the secret can't be
+  // recovered byte-by-byte via response-timing; an empty/missing RECONCILE_SECRET always rejects.
   const expected = Deno.env.get('RECONCILE_SECRET')
-  if (!expected || req.headers.get('x-reconcile-secret') !== expected) {
+  if (!(await secretEquals(req.headers.get('x-reconcile-secret'), expected))) {
     return new Response('unauthorized', { status: 401 })
   }
 

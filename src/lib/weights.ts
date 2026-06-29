@@ -205,7 +205,9 @@ export function prevLoadableDown(weight: number, ex: Exercise, unit: Unit): numb
 }
 
 export function roundToAchievable(weight: number, ex: Exercise, unit: Unit): number {
-  if (weight <= 0) return 0
+  // A non-finite input (NaN/Infinity from a corrupt history) slips past a bare `weight <= 0` (NaN <= 0
+  // is false), so it would otherwise flow through roundToStep and emit NaN into a prescription — guard it.
+  if (!Number.isFinite(weight) || weight <= 0) return 0
   switch (loadType(ex)) {
     case 'barbell': {
       // bar + symmetric plate pairs; smallest pair is 2×2.5 lb (5) or 2×1.25 kg (2.5)

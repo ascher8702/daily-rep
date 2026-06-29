@@ -9,6 +9,7 @@ import { generateWorkout } from '@/lib/generator'
 import { injuryConstraints, isBlockedByInjury } from '@/lib/injuries'
 import { resolvePlanLifts } from '@/lib/substitution'
 import { computeWeeklyStreak, localWeek } from '@/lib/stats'
+import { useNow } from '@/lib/useNow'
 import { fmtDate, fmtDuration, fmtWeight } from '@/lib/format'
 import { ALL_MUSCLES, MUSCLES } from '@/data/muscles'
 import { dayFocusMuscles, planEquipment } from '@/data/plans'
@@ -62,7 +63,11 @@ export default function HomeScreen() {
 
   const [switchOpen, setSwitchOpen] = useState(false)
 
-  const now = Date.now()
+  // Coarse "now" that only changes ~once a minute (held in state, advanced by an interval, cleared on
+  // unmount). A render-fresh Date.now() would change on every render and defeat the recovery/stats
+  // useMemos below, recomputing the per-muscle recovery model on every unrelated re-render. Bucketing to
+  // 60s lets those memos cache while keeping freshness (which decays over time) live within ~1 minute.
+  const now = useNow(60_000)
   // a stable timestamp for previewing a generated session, so the plan hero's fallback preview
   // doesn't re-roll its exercises on every render
   const [genNow] = useState(() => Date.now())

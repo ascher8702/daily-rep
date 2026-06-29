@@ -38,6 +38,12 @@ jobs:
       - name: Unit tests
         run: pnpm test
 
+      # Fails the build on NEW high/critical advisories in PRODUCTION deps (--audit-level=high, so
+      # low/moderate dev noise never blocks a deploy). A known advisory that is reviewed and awaiting an
+      # upstream fix can be allow-listed WITHOUT disabling the gate: add its CVE/GHSA id to
+      # `auditConfig.ignoreCves` / `auditConfig.ignoreGhsas` in package.json (pnpm consults it). Treat that
+      # list as tracked exceptions — keep it short, comment each entry in the PR, and remove the id once the
+      # fix lands. Anything not on the list still hard-fails.
       - name: Production dependency audit
         run: pnpm audit:prod
 

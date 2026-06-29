@@ -9,8 +9,10 @@ import {
   rateLimitResponseHeaders,
   InMemoryRateLimitStore,
   LIMITS,
+  PostgresRateLimitStore,
   type RateLimitConfig,
   type RateLimitStore,
+  type RpcRunner,
 } from './rateLimit.ts'
 
 const ONE_PER_SEC: RateLimitConfig = { limit: 1, windowMs: 1000 }
@@ -94,4 +96,56 @@ Deno.test('LIMITS exposes the tuned budgets', () => {
   assertEquals(LIMITS.GATED_WRITE, { limit: 10, windowMs: 60_000 })
   assertEquals(LIMITS.DELETE_ACCOUNT, { limit: 3, windowMs: 600_000 })
   assertEquals(LIMITS.PUBLIC_IP, { limit: 60, windowMs: 60_000 })
+})
+
+// --- PostgresRateLimitStore (cross-instance store backed by the consume_rate_limit RPC) ---
+
+/** Build a fake RpcRunner that asserts the call shape and returns a canned { data, error }. */
+function fakeRpc(impl: (fn: string, args: Record<string, unknown>) => { data: unknown; error: unknown }): {
+  runner: RpcRunner
+  calls: Array<{ fn: string; args: Record<string, unknown> }>
+} {
+  const calls: Array<{ fn: string; args: Record<string, unknown> }> = []
+  return {
+    calls,
+    runner: {
+      rpc(fn, args) {
+        calls.push({ fn, args })
+        return Promise.resolve(impl(fn, args))
+      },
+    },
+  }
+}
+
+Deno.test('PostgresRateLimitStore.consume: allowed result maps RPC true and converts windowMs→seconds', async () => {
+  const { runner, calls } = fakeRpc(() => ({ data: true, error: null }))
+  const store = new PostgresRateLimitStore(runner)
+  const r = await store.consume('delete-account:u1', LIMITS.DELETE_ACCOUNT, 10_000)
+  assertEquals(r, { allowed: true, limit: 3, remaining: 2, resetAt: 610_000, retryAfterMs: 0 })
+  assertEquals(calls[0], {
+    fn: 'consume_rate_limit',
+    args: { p_key: 'delete-account:u1', p_limit: 3, p_window_seconds: 600 },
+  })
+})
+
+Deno.test('PostgresRateLimitStore.consume: blocked result maps RPC false', async () => {
+  const { runner } = fakeRpc(() => ({ data: false, error: null }))
+  const store = new PostgresRateLimitStore(runner)
+  const r = await store.consume('delete-account:u1', LIMITS.DELETE_ACCOUNT, 0)
+  assertEquals(r.allowed, false)
+  assertEquals(r.remaining, 0)
+  assertEquals(r.retryAfterMs, LIMITS.DELETE_ACCOUNT.windowMs)
+})
+
+Deno.test('PostgresRateLimitStore.consume: RPC error throws (caller owns fail-open)', async () => {
+  const { runner } = fakeRpc(() => ({ data: null, error: { message: 'rpc down' } }))
+  const store = new PostgresRateLimitStore(runner)
+  await assertRejects(() => store.consume('k', LIMITS.DELETE_ACCOUNT, 0), Error, 'rpc down')
+})
+
+Deno.test('PostgresRateLimitStore: get/set are unsupported (atomic via consume only)', async () => {
+  const { runner } = fakeRpc(() => ({ data: true, error: null }))
+  const store = new PostgresRateLimitStore(runner)
+  await assertRejects(() => store.get('k'), Error)
+  await assertRejects(() => store.set('k', { count: 1, windowStart: 0 }), Error)
 })

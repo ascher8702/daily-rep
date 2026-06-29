@@ -3,8 +3,12 @@ import { supabase } from '../lib/supabase'
 import { clearSyncMetadata, startSync, stopSync } from '../lib/sync'
 import { emailValid, passwordIssue, normalizeEmail } from '../lib/auth'
 import { reportError } from '../lib/telemetry'
+import { idbStorage } from '../lib/idbStorage'
 import { runAuthBootstrap } from './authBootstrap'
 import { useStore } from './useStore'
+
+/** The persist key shared by useStore (Zustand persist) and the IndexedDB/localStorage backing. */
+const PERSIST_KEY = 'daily-rep-v1'
 
 /** If the auth session bootstrap hasn't resolved in this long, proceed as signed-out rather than
  *  leaving the user stuck on the loading skeleton; a late success still wires email + sync. */
@@ -57,8 +61,27 @@ export interface AuthState {
 
 let bootstrapped = false
 
-function clearLocalAppData() {
+/**
+ * Scrub ALL device-local app state so a shared browser can't leak one account's data into the next.
+ * resetAll() only resets the in-memory store; the persisted blob is destroyed explicitly here so a
+ * reload (or a slow/failed persist write) can't resurrect the prior account. Mirrors the storage keys
+ * ErrorBoundary.hardReset clears. Async because the IndexedDB writes are.
+ */
+async function clearLocalAppData(): Promise<void> {
   useStore.getState().resetAll()
+  try {
+    // Zustand's own teardown of the persisted blob, then belt-and-suspenders removal of the raw keys
+    // (IndexedDB + the legacy localStorage blob) in case persist isn't wired (e.g. SSR/tests).
+    await useStore.persist.clearStorage()
+    await idbStorage.removeItem(PERSIST_KEY)
+    try {
+      localStorage.removeItem(PERSIST_KEY)
+    } catch {
+      /* localStorage unavailable — IndexedDB removal above is the source of truth */
+    }
+  } catch (e) {
+    reportError(e, { scope: 'auth.clearLocalAppData' })
+  }
   clearSyncMetadata()
 }
 
@@ -101,6 +124,7 @@ export const useAuth = create<AuthState>((set) => ({
     runAuthBootstrap(supabase, set, {
       startSync,
       stopSync,
+      clearLocalAppData,
       timeoutMs: SESSION_BOOTSTRAP_TIMEOUT_MS,
     })
   },
@@ -222,7 +246,7 @@ export const useAuth = create<AuthState>((set) => ({
       // ignore network/identity errors (we still clear the local session below), but surface it
       reportError(e, { scope: 'auth.signOut' })
     }
-    clearLocalAppData()
+    await clearLocalAppData()
     // back to the sign-in screen (account required — no local fallback for a configured build)
     set({ email: null, localOnly: false, pending: null, recovering: false })
   },
@@ -254,7 +278,7 @@ export const useAuth = create<AuthState>((set) => ({
     } catch {
       /* the user no longer exists server-side; clearing the local session is enough */
     }
-    clearLocalAppData()
+    await clearLocalAppData()
     set({ email: null, localOnly: false, pending: null, recovering: false })
     return null
   },

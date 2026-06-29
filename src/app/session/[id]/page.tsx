@@ -530,6 +530,9 @@ export default function ExerciseDetailPage() {
 
 function CueBadge({ label, dir }: { label: string; dir: Dir }) {
   const arrow = dir === 'up' ? '↑' : dir === 'down' ? '↓' : '→'
+  // direction is otherwise carried by colour + arrow glyph only (fails WCAG 1.4.1 use-of-colour);
+  // a visually-hidden word gives SR users the same cue sighted users get from the arrow's tint
+  const dirWord = dir === 'up' ? 'increase' : dir === 'down' ? 'decrease' : 'hold'
   const tone =
     dir === 'up'
       ? 'bg-recovery-fresh/[0.18] text-recovery-fresh'
@@ -539,7 +542,10 @@ function CueBadge({ label, dir }: { label: string; dir: Dir }) {
   return (
     <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-fg/55">
       {label}
-      <span className={`grid place-items-center h-4 w-4 rounded-full text-[11px] font-bold ${tone}`}>{arrow}</span>
+      <span className={`grid place-items-center h-4 w-4 rounded-full text-[11px] font-bold ${tone}`}>
+        <span aria-hidden="true">{arrow}</span>
+        <span className="sr-only">{dirWord}</span>
+      </span>
     </span>
   )
 }

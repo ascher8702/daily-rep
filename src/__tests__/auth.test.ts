@@ -1,7 +1,8 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { hashPassword, emailValid, passwordIssue, normalizeEmail, nameFromEmail } from '../lib/auth'
 import { useAuth } from '../store/useAuth'
 import { useStore } from '../store/useStore'
+import { idbStorage } from '../lib/idbStorage'
 
 beforeEach(() => {
   useAuth.setState({ email: null, localOnly: false, pending: null })
@@ -71,5 +72,18 @@ describe('useAuth (Supabase-backed)', () => {
     expect(useStore.getState().workouts).toEqual([])
     expect(useStore.getState().profile.onboarded).toBe(false)
     expect(useAuth.getState()).toMatchObject({ email: null, localOnly: false, pending: null, recovering: false })
+  })
+
+  it('DESTROYS the persisted blob on sign-out (not just in-memory state)', async () => {
+    // Seed a persisted blob so a reload could otherwise resurrect the prior account's data.
+    await idbStorage.setItem('daily-rep-v1', JSON.stringify({ state: { workouts: [{ id: 'leak' }] }, version: 1 }))
+    const clearSpy = vi.spyOn(useStore.persist, 'clearStorage')
+
+    await useAuth.getState().signOut()
+
+    // The persist key is gone from storage AND zustand's own teardown ran.
+    expect(clearSpy).toHaveBeenCalled()
+    expect(await idbStorage.getItem('daily-rep-v1')).toBeNull()
+    clearSpy.mockRestore()
   })
 })

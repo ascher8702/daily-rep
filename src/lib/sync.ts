@@ -1,7 +1,7 @@
 import { supabase, STATE_TABLE } from './supabase'
 import { reportError, reportEvent } from './telemetry'
 import type { Json } from './database.types'
-import { useStore, mergePersisted, partializeState, type AppState } from '../store/useStore'
+import { useStore, mergePersisted, partializeState, loggedSetCount, type AppState } from '../store/useStore'
 
 /**
  * Offline-first cloud sync. localStorage (the Zustand `persist` blob under `daily-rep-v1`) stays the
@@ -23,6 +23,10 @@ let detachVisibility: (() => void) | null = null
 let pulling = false // in-flight guard so rapid focus/visibility events don't stack pulls
 let lastPushAt = 0 // wall-clock ms of the last SUCCESSFUL push (0 = nothing synced yet this session)
 let pushRetry: ReturnType<typeof setTimeout> | null = null // pending backoff retry timer
+// Logged-set count of the active session as of the last store change we observed. When it INCREASES
+// (the user just logged a real set) we flush immediately instead of waiting out the 2s debounce, so the
+// loss window for a freshly-logged set racing a crash / device switch is as small as possible.
+let lastLoggedSetCount = 0
 
 // DEFAULT read-WRITE: today's behavior is byte-identical (the gate is a no-op `if (false) return`). The
 // future web-analytics-dashboard build calls setSyncReadOnly(true) at startup so it NEVER writes the
@@ -121,6 +125,22 @@ export function clockAfterAdopt(local: number, cloud: number): number {
   return Math.max(local, cloud) + 1
 }
 
+/**
+ * Whether a store change should flush PAST the 2s debounce (push immediately). True ONLY when the active
+ * session's logged-set count INCREASED (the user just logged a real set — the highest-value, most
+ * loss-sensitive change) AND no pull/adopt is in flight.
+ *
+ * The `!pulling` guard is load-bearing: the store subscription also fires inside `pullAndReconcile`'s
+ * `setState(merged)` — BEFORE that function updates `lastPushedJson` and stamps `clockAfterAdopt`. An
+ * immediate push there would upload the just-adopted blob at the wrong (pre-adopt) clock, which the
+ * server's `<=` monotonic guard would silently revert — losing the merge. Deferring to the debounce lets
+ * the post-adopt write land first, after which the debounced push correctly unchanged-skips (or pushes
+ * at the right clock). A decrease / no-change in the count is never an immediate flush. Pure + exported.
+ */
+export function shouldFlushImmediately(prevCount: number, nextCount: number, pulling: boolean): boolean {
+  return nextCount > prevCount && !pulling
+}
+
 /** The partialized state blob exactly as persisted to localStorage. */
 /** Parse the Zustand persist blob's `.state`, guarding it's a real (non-null, non-array) OBJECT before
  *  it's pushed as the cloud `data` — a corrupt blob whose `.state` is a string/array/null/garbage → null
@@ -142,6 +162,13 @@ export function parsePersistedState(raw: string | null): Json | null {
  */
 function persistedState(): Json | null {
   return partializeState(useStore.getState()) as unknown as Json
+}
+
+/** The synced blob for an ARBITRARY state (not the live store) — exactly `partializeState`, so the
+ *  equal-clock tie-break in `reconcileDecision` compares the cloud row against the SAME serialized shape
+ *  the device would push. Pure (no store/IO access). */
+function persistedBlob(state: AppState): Json {
+  return partializeState(state) as unknown as Json
 }
 
 /**
@@ -301,7 +328,111 @@ function schedulePush() {
   }, 2000)
 }
 
-/** Pull the cloud row and reconcile against local (offline-first last-write-wins). */
+/**
+ * Push NOW, bypassing the 2s debounce — used the instant the user logs a set, where the extra debounce
+ * delay is a real data-loss window if the tab closes / device dies. Cancels any pending debounced push
+ * and failure-retry first (they'd re-read the same latest state, so they're redundant), then pushes the
+ * current blob. Goes through the same pushNow path, so the read-only gate, the strictly-increasing clock,
+ * and the lastPushedJson unchanged-skip all still apply unchanged.
+ */
+function pushImmediate() {
+  if (pushTimer) {
+    clearTimeout(pushTimer)
+    pushTimer = null
+  }
+  if (pushRetry) {
+    clearTimeout(pushRetry)
+    pushRetry = null
+  }
+  void pushNow()
+}
+
+/** A cloud row as read for reconcile: its blob and the raw `client_updated_at` ISO string (or null
+ *  for an empty/absent row). The minimal shape `reconcileDecision` needs — the real
+ *  `supabase.select('data, client_updated_at').maybeSingle()` result is assignable to it. */
+export interface CloudRow {
+  data: Json | null
+  client_updated_at: string | null
+}
+
+/**
+ * The pure result of reconciling a fetched cloud row against local state:
+ *  - `adopt`  → the cloud row is newer; carries the merged next state (mergePersisted of cloud over
+ *               local) and the next clock value (clockAfterAdopt of local + cloudTs) to apply.
+ *  - `push`   → local is newer or the cloud row is empty; the caller pushes local up.
+ *  The `cloudTs` is included for telemetry/debugging; it never changes the action.
+ */
+export type ReconcileResult =
+  | { action: 'adopt'; nextState: AppState; nextClock: number; cloudTs: number }
+  | { action: 'push'; cloudTs: number }
+
+/**
+ * The PURE decision + merge core of `pullAndReconcile`, factored out so the stateful adopt/push race
+ * gets real (node-friendly, supabase-free) integration coverage. Given the already-fetched cloud row
+ * (or null), the current local state, the current local clock, and opts, it decides the branch and —
+ * for adopt — precomputes the merged next state and the post-adopt clock. It performs NO side effects:
+ * no supabase calls, no useStore.setState, no timers, no global/document/window access. The caller
+ * (`pullAndReconcile`) applies the result with the same side effects, in the same order, as before.
+ *
+ * Branch contract:
+ *   cloudTs = row.client_updated_at ? Date(...).getTime() : 0
+ *   adopt  ⇔ row.data is present AND (cloudTs > localClock OR (cloudTs == localClock AND blobs DIFFER))
+ *   else   ⇒ push
+ * The adopt branch merges cloud OVER local via mergePersisted and stamps clockAfterAdopt(localClock,
+ * cloudTs) — strictly past cloudTs so the post-adopt push survives the server's `<=` monotonic guard.
+ *
+ * The `cloudTs == localClock` tie-break is load-bearing, NOT cosmetic: two devices can independently
+ * reach the SAME clock (same-millisecond completion, or convergent nextClock values) and push concurrently.
+ * The first push wins the server's strictly-greater guard; the second device's push is then rejected
+ * (its clock is `<=` the stored one) and — with a strict `>` predicate — it would NEVER adopt either,
+ * permanently splitting brains (it keeps its own blob, the cloud keeps the winner's, each loses the
+ * other's committed workouts). Adopting on the equal-clock tie when the blobs actually differ runs the
+ * loss-free union-merge and bumps clockAfterAdopt past the tie, so the union reaches the cloud on the
+ * next genuine edit and both devices converge. The blobs-differ guard keeps an idempotent equal-clock
+ * repull (this device's own last write echoed back) on the push/unchanged-skip path — no needless
+ * adopt + clock bump. `opts` is accepted for parity with the call site (and future field-merge gating);
+ * it does not change the decision today. Pure + exported for tests.
+ */
+export function reconcileDecision(
+  row: CloudRow | null,
+  localState: AppState,
+  localClock: number,
+  _opts: { readOnly?: boolean } = {},
+): ReconcileResult {
+  const cloudTs = row?.client_updated_at ? new Date(row.client_updated_at).getTime() : 0
+  if (row?.data) {
+    // adopt when cloud is strictly newer, OR on an exact-clock tie whose blob genuinely differs (the
+    // same-clock-collision case — see the tie-break note above). A tie with an identical blob is the
+    // device's own write echoed back: fall through to push (which unchanged-skips), not a wasted adopt.
+    const tieDiffers =
+      cloudTs === localClock && JSON.stringify(row.data) !== JSON.stringify(persistedBlob(localState))
+    if (cloudTs > localClock || tieDiffers) {
+      // cloud is newer (or a divergent tie) → adopt it (hardened through the store's own union-merge)
+      const nextState = mergePersisted(row.data as unknown as Partial<AppState>, localState)
+      // Bump strictly past cloudTs (NOT pin at cloudTs): clockAfterAdopt = max(local, cloud)+1 so the
+      // next push lands at client_updated_at > cloudTs and survives the server's `<=` revert guard.
+      return { action: 'adopt', nextState, nextClock: clockAfterAdopt(localClock, cloudTs), cloudTs }
+    }
+  }
+  // local is newer or the cloud row is empty → claim/update the cloud copy from local
+  return { action: 'push', cloudTs }
+}
+
+/**
+ * Pull the cloud row and reconcile against local (offline-first last-write-wins). Runs on the initial
+ * sign-in reconcile AND on every returning/refocused-tab repull: when the cloud row is newer we adopt
+ * it through the store's union-merge (mergePersisted/unionWorkouts), which is loss-free for workouts[]
+ * and the current session even if the newer cloud row was written by another device. A focus repull
+ * does NOT defer the adopt to protect an unsynced LOCAL wholesale-field edit (profile/activePlan/…):
+ * that would require field-level merge (deferred — whole-blob LWW), and the unmerged-push deferral it
+ * replaced could permanently overwrite committed workouts another device had added. Plain adopt (cloud
+ * wholesale wins on the race) is the accepted, documented LWW limitation and is strictly safer than
+ * losing committed workouts.
+ *
+ * The branch + merge is computed by the pure `reconcileDecision`; this function only FETCHES the row
+ * and APPLIES the result (setState of the merged state, lastPushedJson bookkeeping, writeClock, or the
+ * else-branch pushNow) — the same side effects, in the same order, as the previous inline body.
+ */
 async function pullAndReconcile(): Promise<void> {
   if (!supabase || !userId || pulling) return
   pulling = true
@@ -315,18 +446,18 @@ async function pullAndReconcile(): Promise<void> {
       reportError(error, { scope: 'sync.pull' })
       return
     }
-    const cloudTs = row?.client_updated_at ? new Date(row.client_updated_at).getTime() : 0
-    if (row?.data && cloudTs > clientUpdatedAt) {
-      // cloud is newer → adopt it (hardened through the store's own merge for safety)
-      const merged = mergePersisted(row.data as unknown as Partial<AppState>, useStore.getState())
-      useStore.setState(merged)
+    const decision = reconcileDecision(row, useStore.getState(), clientUpdatedAt, {
+      readOnly: syncReadOnly,
+    })
+    if (decision.action === 'adopt') {
+      // cloud is newer → adopt the precomputed merged state, then stamp the post-adopt clock
+      useStore.setState(decision.nextState)
       lastPushedJson = JSON.stringify(persistedState())
-      // Bump strictly past cloudTs (NOT pin at cloudTs). setState above already fired the store
-      // subscription, which set the clock to nextClock(oldLocal, Date.now()) — but if cloudTs was
-      // written by a clock-ahead device that value can be < cloudTs, so the next push would land at
-      // client_updated_at < cloudTs and be reverted by the server's <= guard (the union never reaches
-      // the DB). The explicit max(local, cloud)+1 overrides that and guarantees the next push survives.
-      writeClock(clockAfterAdopt(clientUpdatedAt, cloudTs))
+      // setState above already fired the store subscription, which set the clock to
+      // nextClock(oldLocal, Date.now()) — but that can be < cloudTs if cloud was written by a
+      // clock-ahead device, so the next push would be reverted by the server's <= guard. The explicit
+      // clockAfterAdopt (max(local, cloud)+1) overrides that and guarantees the next push survives.
+      writeClock(decision.nextClock)
     } else {
       // local is newer or the cloud row is empty → claim/update the cloud copy from local
       await pushNow()
@@ -345,12 +476,23 @@ export async function startSync(uid: string): Promise<void> {
   // never adopt-or-overwrite based on empty default state (which could clobber the cloud copy).
   await waitForHydration()
   await pullAndReconcile()
+  // baseline the logged-set counter to the post-reconcile session so the first real set logged after
+  // sign-in counts as an INCREASE (and flushes immediately), not a same-as-baseline no-op
+  lastLoggedSetCount = loggedSetCount(useStore.getState().current)
   unsubscribe?.()
   // any persisted state change advances our logical clock (strictly increasing — see nextClock) and
   // queues a push, so this device always syncs its latest data forward past whatever it last stored
   unsubscribe = useStore.subscribe(() => {
     writeClock(nextClock(clientUpdatedAt, Date.now()))
-    schedulePush()
+    // A newly-logged set is the highest-value, most loss-sensitive change — flush it past the debounce
+    // immediately (unless a pull/adopt is in flight). Any other change (or a decrease/no-change in the
+    // count) takes the normal 2s debounce. The decision + its load-bearing !pulling guard live in the
+    // pure, unit-tested `shouldFlushImmediately`.
+    const count = loggedSetCount(useStore.getState().current)
+    const flushNow = shouldFlushImmediately(lastLoggedSetCount, count, pulling)
+    lastLoggedSetCount = count
+    if (flushNow) pushImmediate()
+    else schedulePush()
   })
 
   // A returning / refocused tab refetches before it can clobber newer cloud data written by another

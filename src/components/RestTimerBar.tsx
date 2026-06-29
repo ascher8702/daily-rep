@@ -43,12 +43,21 @@ export default function RestTimerBar() {
   // (px-5 py-3 + safe-bottom, ~76px tall content). Sit clearly above it: 84px clearance for the bar
   // PLUS the device safe-area inset, so the timer never overlaps the bar on home-indicator phones
   // (the old hardcoded bottom-[96px] ignored the inset and could collide). pb-2 adds a small gap.
+  // SR announcement: the per-second tick is visual-only (aria-hidden) so we don't spam the
+  // screen reader every second. A separate live region carries only the meaningful state
+  // transitions — "Resting" on start (polite) and "Rest complete" on finish (assertive).
+  const liveMessage = done ? 'Rest complete' : 'Resting'
+
   return (
     <div
+      role="timer"
       className="fixed inset-x-0 z-30 px-3 pb-2 pointer-events-none"
       style={{ bottom: 'calc(84px + env(safe-area-inset-bottom, 0px))' }}
     >
       <div className="mx-auto max-w-md pointer-events-auto">
+        <span className="sr-only" aria-live={done ? 'assertive' : 'polite'} aria-atomic="true">
+          {liveMessage}
+        </span>
         <div className={`bg-card overflow-hidden rounded-2xl border ${done ? 'border-recovery-fresh/60' : 'border-recovery-fresh/40'}`}>
           <div className="h-1 bg-raised">
             <div
@@ -58,10 +67,10 @@ export default function RestTimerBar() {
           </div>
           <div className="flex items-center gap-3 px-3.5 py-2.5">
             <div className="flex flex-col min-w-0">
-              <span className="text-[10px] uppercase tracking-[0.06em] text-fg/45 font-extrabold">
+              <span aria-hidden="true" className="text-[10px] uppercase tracking-[0.06em] text-fg/45 font-extrabold">
                 {done ? 'Rest complete' : 'Resting'}
               </span>
-              <span className={`text-[21px] font-black tabular-nums leading-none mt-0.5 ${done ? 'text-recovery-fresh' : 'text-fg'}`}>
+              <span aria-hidden="true" className={`text-[21px] font-black tabular-nums leading-none mt-0.5 ${done ? 'text-recovery-fresh' : 'text-fg'}`}>
                 {fmtClock(remaining)}
               </span>
               {upNext && (
