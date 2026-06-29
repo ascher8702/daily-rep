@@ -47,26 +47,33 @@ export default function TrialBanner() {
   }
 
   return (
-    <div className="w-full flex items-center gap-3 rounded-2xl border border-blaze/30 bg-blaze/10 px-4 py-3">
+    <div className="relative w-full rounded-2xl border border-blaze/30 bg-blaze/10">
+      {/* Tap anywhere on the card (except the X) → subscribe. */}
       <button
         onClick={() => router.push('/subscribe')}
-        className="flex-1 min-w-0 flex items-center gap-3 text-left active:scale-[0.99] transition"
+        className="block w-full text-left px-4 py-3 active:scale-[0.99] transition"
       >
-        <span className="grid place-items-center h-9 w-9 rounded-full bg-blaze/15 text-blaze-label shrink-0">
-          <FlameIcon size={18} />
-        </span>
-        <div className="flex-1 min-w-0">
-          <div className="text-sm font-semibold">{headline}</div>
-          <div className="text-xs text-fg/50">Subscribe to keep your training after the trial.</div>
+        <div className="flex items-start gap-3 pr-8">
+          <span className="grid place-items-center h-9 w-9 rounded-full bg-blaze/15 text-blaze-label shrink-0">
+            <FlameIcon size={18} />
+          </span>
+          <div className="min-w-0">
+            <div className="text-sm font-semibold">{headline}</div>
+            <div className="text-xs text-fg/50">Subscribe to keep your training after the trial.</div>
+          </div>
         </div>
-        <span className="shrink-0 inline-flex items-center gap-0.5 text-xs font-bold text-blaze-label">
-          Subscribe <ChevronRight size={14} />
-        </span>
+        {/* Subscribe CTA — bottom-right */}
+        <div className="mt-2 flex justify-end">
+          <span className="inline-flex items-center gap-0.5 text-xs font-bold text-blaze-label">
+            Subscribe <ChevronRight size={14} />
+          </span>
+        </div>
       </button>
+      {/* Dismiss — absolute top-right corner (rendered after the card button so it sits on top / is clickable). */}
       <button
         onClick={dismiss}
         aria-label="Dismiss trial reminder"
-        className="shrink-0 grid place-items-center min-h-[44px] min-w-[44px] -mr-2 text-fg/40 active:text-fg/70 transition"
+        className="absolute top-1.5 right-1.5 z-10 grid place-items-center h-9 w-9 rounded-full text-fg/45 active:text-fg/75 transition"
       >
         <XIcon size={16} />
       </button>
